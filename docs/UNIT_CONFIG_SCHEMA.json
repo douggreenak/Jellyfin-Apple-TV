@@ -1,0 +1,118 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://jellyfin.local/schemas/unit-config.json",
+  "title": "UnitConfig",
+  "description": "Canonical configuration for a single Apple TV unit. The management server is the source of truth; the device caches it and re-fetches when configVersion changes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["unitId", "displayName", "jellyfin", "browse", "appearance", "playback", "security", "configVersion", "updatedAt"],
+  "properties": {
+    "unitId": { "type": "string", "description": "UUID generated on the device, stable per install." },
+    "displayName": { "type": "string", "default": "New Apple TV" },
+    "groupId": { "type": ["string", "null"], "default": null },
+    "jellyfin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serverUrl", "username", "password"],
+      "properties": {
+        "serverUrl": { "type": "string", "default": "", "description": "Base URL, no trailing slash, e.g. https://jelly.example.com" },
+        "username": { "type": "string", "default": "" },
+        "password": { "type": "string", "default": "" }
+      }
+    },
+    "browse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "homeLibraryId", "allowedLibraryIds", "hiddenLibraryIds"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["full", "curated", "kiosk"], "default": "full" },
+        "homeLibraryId": { "type": ["string", "null"], "default": null },
+        "allowedLibraryIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "hiddenLibraryIds": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "appearance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appTitle", "theme", "accentColorHex", "showClock", "showItemTitles", "posterStyle"],
+      "properties": {
+        "appTitle": { "type": "string", "default": "Jellyfin" },
+        "theme": { "type": "string", "enum": ["system", "light", "dark"], "default": "dark" },
+        "accentColorHex": { "type": "string", "pattern": "^#([0-9a-fA-F]{6})$", "default": "#5E5CE6" },
+        "showClock": { "type": "boolean", "default": true },
+        "showItemTitles": { "type": "boolean", "default": true },
+        "posterStyle": { "type": "string", "enum": ["poster", "thumb", "wide"], "default": "poster" }
+      }
+    },
+    "playback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["autoplayNext", "maxBitrateMbps", "preferDirectPlay"],
+      "properties": {
+        "autoplayNext": { "type": "boolean", "default": true },
+        "maxBitrateMbps": { "type": "number", "minimum": 0, "default": 0 },
+        "preferDirectPlay": { "type": "boolean", "default": true }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["settingsPinEnabled", "settingsPin"],
+      "properties": {
+        "settingsPinEnabled": { "type": "boolean", "default": false },
+        "settingsPin": { "type": ["string", "null"], "pattern": "^[0-9]{4}$", "default": null }
+      }
+    },
+    "configVersion": { "type": "integer", "minimum": 1, "default": 1 },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+
+  "$defs": {
+    "Unit": {
+      "title": "Unit",
+      "description": "Server-side record: config plus telemetry. Returned by admin endpoints.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitId", "displayName", "config", "status", "registeredAt"],
+      "properties": {
+        "unitId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "groupId": { "type": ["string", "null"] },
+        "config": { "$ref": "#" },
+        "status": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["online", "lastSeenAt"],
+          "properties": {
+            "online": { "type": "boolean" },
+            "lastSeenAt": { "type": ["string", "null"], "format": "date-time" },
+            "appVersion": { "type": ["string", "null"] },
+            "tvosVersion": { "type": ["string", "null"] },
+            "model": { "type": ["string", "null"] },
+            "ipAddress": { "type": ["string", "null"] },
+            "nowPlaying": {
+              "type": ["object", "null"],
+              "properties": {
+                "title": { "type": "string" },
+                "itemId": { "type": "string" },
+                "positionTicks": { "type": "number" }
+              }
+            },
+            "lastError": { "type": ["string", "null"] }
+          }
+        },
+        "pendingCommand": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["id", "type"],
+          "properties": {
+            "id": { "type": "string" },
+            "type": { "type": "string", "enum": ["reload", "identify", "restart"] },
+            "issuedAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        "registeredAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

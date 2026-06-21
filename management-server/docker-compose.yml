@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Jellyfin management server — Docker Compose
+#
+#   docker compose up -d --build      # start everything
+#   docker compose logs -f            # watch logs
+#   docker compose down               # stop (data is kept in ./data)
+#
+# Two services on one private network:
+#   • server : Node/TypeScript API + SQLite. Listens on 4000.
+#   • admin  : nginx serving the React dashboard, and proxying /api -> server.
+#
+# The device API is reachable BOTH ways:
+#   • through the admin proxy : http://<box>:8080/api/v1/...
+#   • directly on the backend : http://<box>:4000/api/v1/...
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  server:
+    build: ./server
+    image: jellyfin-management-server
+    container_name: jellyfin-management-server
+    env_file: ./server/.env
+    # Persist the SQLite database on the host. DB_PATH (in .env) defaults to
+    # ./data/jellyfin.db, which resolves to /app/data inside the container.
+    volumes:
+      - ./data:/app/data
+    # Expose the backend directly on the box too, so Apple TVs can be pointed
+    # straight at :4000 if you prefer not to go through the admin proxy.
+    ports:
+      - "4000:4000"
+    networks:
+      - jellyfin
+    restart: unless-stopped
+
+  admin:
+    build: ./admin
+    image: jellyfin-admin
+    container_name: jellyfin-admin
+    # Dashboard (and the /api proxy) on host port 8080.
+    ports:
+      - "8080:80"
+    depends_on:
+      - server
+    networks:
+      - jellyfin
+    restart: unless-stopped
+
+networks:
+  jellyfin:
+    name: jellyfin
+    driver: bridge

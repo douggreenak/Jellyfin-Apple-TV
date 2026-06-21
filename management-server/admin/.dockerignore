@@ -1,0 +1,13 @@
+# Don't copy host artifacts into the build context — build fresh in the image.
+node_modules
+dist
+dist-ssr
+.env
+.env.*
+!.env.example
+*.local
+npm-debug.log*
+Dockerfile
+.dockerignore
+.git
+.gitignore

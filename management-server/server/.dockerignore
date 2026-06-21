@@ -1,0 +1,14 @@
+# Don't copy host artifacts into the build context.
+# Crucial for better-sqlite3: a host-built node_modules would carry the wrong
+# native binary into the Linux image. Let the image build deps fresh.
+node_modules
+dist
+data
+.env
+.env.*
+!.env.example
+npm-debug.log*
+Dockerfile
+.dockerignore
+.git
+.gitignore
