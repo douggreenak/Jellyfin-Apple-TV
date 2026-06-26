@@ -115,6 +115,26 @@ export interface JellyfinLibrary {
   name: string;
 }
 
+/** A node in the Jellyfin tree (library or sub-folder) for the lock picker. */
+export interface JellyfinBrowseItem {
+  id: string;
+  name: string;
+  isFolder: boolean;
+  childCount?: number;
+}
+
+export interface JellyfinChildrenResult {
+  ok: boolean;
+  items?: JellyfinBrowseItem[];
+  error?: string;
+}
+
+export interface JellyfinResolveResult {
+  ok: boolean;
+  item?: JellyfinBrowseItem;
+  error?: string;
+}
+
 export interface JellyfinTestResult {
   ok: boolean;
   serverName?: string;
@@ -280,6 +300,16 @@ export const api = {
     return request<MeResult>('/admin/auth/me');
   },
 
+  changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>('/admin/auth/change-password', {
+      method: 'POST',
+      body: { currentPassword, newPassword },
+    });
+  },
+
   // Units
   listUnits(): Promise<Unit[]> {
     return request<Unit[]>('/admin/units');
@@ -360,6 +390,40 @@ export const api = {
       method: 'POST',
       body: creds,
     });
+  },
+
+  // Browse the Jellyfin tree for the "lock to library/folder" picker. Omit
+  // parentId for the top-level libraries.
+  jellyfinChildren(
+    creds: JellyfinConfig,
+    parentId?: string,
+  ): Promise<JellyfinChildrenResult> {
+    return request<JellyfinChildrenResult>('/admin/jellyfin/children', {
+      method: 'POST',
+      body: { ...creds, ...(parentId ? { parentId } : {}) },
+    });
+  },
+
+  // Resolve a single item id to its name/type (to show what a TV is locked to).
+  jellyfinResolve(
+    creds: JellyfinConfig,
+    itemId: string,
+  ): Promise<JellyfinResolveResult> {
+    return request<JellyfinResolveResult>('/admin/jellyfin/resolve', {
+      method: 'POST',
+      body: { ...creds, itemId },
+    });
+  },
+
+  // Push this Jellyfin server/account to every existing unit (overwrites their
+  // jellyfin section only). Returns how many units were updated.
+  pushJellyfinToAll(
+    creds: JellyfinConfig,
+  ): Promise<{ ok: boolean; affected: number }> {
+    return request<{ ok: boolean; affected: number }>(
+      '/admin/units/push-jellyfin',
+      { method: 'POST', body: creds },
+    );
   },
 
   // Backup & restore — full server configuration (defaults + all units).

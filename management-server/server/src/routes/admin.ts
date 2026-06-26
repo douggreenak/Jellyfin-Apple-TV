@@ -9,19 +9,23 @@ import {
   putDefaultsTemplate,
   type UnitRow,
 } from "../db";
-import { requireAdmin, adminLogin } from "../auth";
+import { requireAdmin, adminLogin, changeAdminPassword } from "../auth";
 import {
   loginSchema,
+  changePasswordSchema,
   unitConfigPatchSchema,
   commandSchema,
   renameSchema,
+  jellyfinSchema,
   jellyfinTestSchema,
+  jellyfinBrowseSchema,
+  jellyfinResolveSchema,
   unitConfigSchema,
   bulkActionSchema,
   serverImportSchema,
 } from "../schema";
 import type { UnitConfig } from "../schema";
-import { testJellyfin } from "../jellyfin";
+import { testJellyfin, browseJellyfin, resolveJellyfinItem } from "../jellyfin";
 import {
   toUnit,
   deepMerge,
@@ -87,6 +91,34 @@ adminRouter.post("/auth/login", (req: Request, res: Response) => {
 adminRouter.get("/auth/me", requireAdmin, (req: Request, res: Response) => {
   res.json({ username: req.admin?.username });
 });
+
+/**
+ * POST /auth/change-password
+ * Change the admin password (requires the current one). The new hash is persisted,
+ * so it survives restarts. Existing tokens stay valid until they expire.
+ */
+adminRouter.post(
+  "/auth/change-password",
+  requireAdmin,
+  (req: Request, res: Response) => {
+    const parsed = changePasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res
+        .status(400)
+        .json({ ok: false, error: "New password must be at least 8 characters." });
+      return;
+    }
+    const result = changeAdminPassword(
+      parsed.data.currentPassword,
+      parsed.data.newPassword
+    );
+    if (!result.ok) {
+      res.status(400).json({ ok: false, error: result.error });
+      return;
+    }
+    res.json({ ok: true });
+  }
+);
 
 /* -------------------------------- Units --------------------------------- */
 
@@ -281,6 +313,45 @@ adminRouter.post("/units/bulk", requireAdmin, (req: Request, res: Response) => {
 });
 
 /**
+ * POST /units/push-jellyfin
+ * Fleet-wide: apply this Jellyfin server/account to EVERY unit's config (only the
+ * `jellyfin` section — per-unit appearance/browse/etc. are preserved), bumping each
+ * configVersion so devices switch servers on their next heartbeat. Used by the
+ * "push this server to all TVs" button on the Defaults → Jellyfin tab.
+ */
+adminRouter.post(
+  "/units/push-jellyfin",
+  requireAdmin,
+  (req: Request, res: Response) => {
+    const parsed = jellyfinSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: "Invalid Jellyfin config" });
+      return;
+    }
+    const jellyfin = parsed.data;
+    let affected = 0;
+    for (const row of listUnitRows()) {
+      const current = JSON.parse(row.config) as UnitConfig;
+      const merged: UnitConfig = {
+        ...current,
+        jellyfin,
+        configVersion: row.configVersion + 1,
+        updatedAt: new Date().toISOString(),
+      };
+      const valid = unitConfigSchema.safeParse(merged);
+      if (!valid.success) continue;
+      updateUnitRow({
+        ...row,
+        config: JSON.stringify(valid.data),
+        configVersion: valid.data.configVersion,
+      });
+      affected++;
+    }
+    res.json({ ok: true, affected });
+  }
+);
+
+/**
  * POST /units/:unitId/unadopt
  * Returns a unit to the "ready to adopt" list (leaves its config untouched).
  */
@@ -433,5 +504,43 @@ adminRouter.post(
     }
     const result = await testJellyfin(parsed.data);
     res.json(result);
+  }
+);
+
+/**
+ * POST /jellyfin/children
+ * List the children of a folder (or top-level libraries when no parentId), used
+ * by the admin's "lock to a library/folder" picker to drill the Jellyfin tree.
+ */
+adminRouter.post(
+  "/jellyfin/children",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const parsed = jellyfinBrowseSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: "Invalid body" });
+      return;
+    }
+    const { parentId, ...creds } = parsed.data;
+    res.json(await browseJellyfin(creds, parentId));
+  }
+);
+
+/**
+ * POST /jellyfin/resolve
+ * Resolve a single item id to its name/type, so the admin can show which folder a
+ * TV is locked to (the id alone is meaningless to an operator).
+ */
+adminRouter.post(
+  "/jellyfin/resolve",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const parsed = jellyfinResolveSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: "Invalid body" });
+      return;
+    }
+    const { itemId, ...creds } = parsed.data;
+    res.json(await resolveJellyfinItem(creds, itemId));
   }
 );

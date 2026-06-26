@@ -26,7 +26,7 @@
       "required": ["mode", "homeLibraryId", "allowedLibraryIds", "hiddenLibraryIds"],
       "properties": {
         "mode": { "type": "string", "enum": ["full", "curated", "kiosk"], "default": "full" },
-        "homeLibraryId": { "type": ["string", "null"], "default": null },
+        "homeLibraryId": { "type": ["string", "null"], "default": null, "description": "Lock target: a top-level library OR any sub-folder id. When set, the app opens straight into it and cannot navigate above it (e.g. lock a TV to a 'Kids' folder)." },
         "allowedLibraryIds": { "type": "array", "items": { "type": "string" }, "default": [] },
         "hiddenLibraryIds": { "type": "array", "items": { "type": "string" }, "default": [] }
       }

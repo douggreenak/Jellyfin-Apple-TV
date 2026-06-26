@@ -143,3 +143,23 @@ export function putDefaultsTemplate(template: UnitConfig): void {
     )
     .run(DEFAULTS_KEY, JSON.stringify(template));
 }
+
+/* ------------------------------ Settings KV ------------------------------ */
+
+/** Read a raw value from the settings key-value table. */
+export function getSetting(key: string): string | undefined {
+  const row = getDb()
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get(key) as { value: string } | undefined;
+  return row?.value;
+}
+
+/** Upsert a raw value into the settings key-value table. */
+export function putSetting(key: string, value: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run(key, value);
+}

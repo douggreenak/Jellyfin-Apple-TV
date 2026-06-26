@@ -61,8 +61,8 @@ export default function Login() {
         alignItems: 'center',
         justifyContent: 'center',
         p: 2,
-        background:
-          'radial-gradient(1200px 600px at 50% -10%, rgba(94,92,230,0.18), transparent 60%), #F5F5F7',
+        background: (t) =>
+          `radial-gradient(1200px 600px at 50% -10%, rgba(94,92,230,0.18), transparent 60%), ${t.palette.background.default}`,
       }}
     >
       <Card sx={{ width: '100%', maxWidth: 400 }}>
@@ -74,7 +74,7 @@ export default function Login() {
                 height: 56,
                 borderRadius: 3,
                 bgcolor: 'primary.main',
-                color: '#fff',
+                color: 'primary.contrastText',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

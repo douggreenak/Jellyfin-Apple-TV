@@ -2,18 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CircularProgress from '@mui/material/CircularProgress';
-import Paper from '@mui/material/Paper';
 import Snackbar from '@mui/material/Snackbar';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import Typography from '@mui/material/Typography';
-import SaveIcon from '@mui/icons-material/Save';
 import { api, type JellyfinLibrary, type UnitConfig } from '../api/client';
 import TabPanel from '../components/TabPanel';
+import SaveBar from '../components/SaveBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import JellyfinPanel from '../components/config/JellyfinPanel';
 import AppearancePanel from '../components/config/AppearancePanel';
 import BrowsePanel from '../components/config/BrowsePanel';
@@ -27,6 +26,7 @@ export default function Defaults() {
   const [draft, setDraft] = useState<UnitConfig | null>(null);
   const [libraries, setLibraries] = useState<JellyfinLibrary[]>([]);
   const [snack, setSnack] = useState<string | null>(null);
+  const [confirmPush, setConfirmPush] = useState(false);
 
   const defaultsQuery = useQuery({
     queryKey: ['defaults'],
@@ -53,9 +53,32 @@ export default function Defaults() {
     onSuccess: (updated) => {
       setDraft(structuredClone(updated));
       queryClient.setQueryData(['defaults'], updated);
-      setSnack('Defaults saved. New units will use these settings.');
     },
     onError: (err) => setSnack(err instanceof Error ? err.message : 'Save failed.'),
+  });
+
+  // Autosave: persist a moment after edits stop. No Save button to hunt for.
+  useEffect(() => {
+    if (!dirty || saveMutation.isPending || !draft) return;
+    const t = setTimeout(() => saveMutation.mutate(draft), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, dirty, saveMutation.isPending]);
+
+  // Push the Jellyfin server to every existing TV (fleet-wide override).
+  const pushMutation = useMutation({
+    mutationFn: (cfg: UnitConfig) => api.pushJellyfinToAll(cfg.jellyfin),
+    onSuccess: (res) => {
+      setConfirmPush(false);
+      queryClient.invalidateQueries({ queryKey: ['units'] });
+      setSnack(
+        `Jellyfin server pushed to ${res.affected} TV${res.affected === 1 ? '' : 's'}.`,
+      );
+    },
+    onError: (err) => {
+      setConfirmPush(false);
+      setSnack(err instanceof Error ? err.message : 'Push failed.');
+    },
   });
 
   if (defaultsQuery.isLoading || !draft) {
@@ -113,6 +136,8 @@ export default function Defaults() {
               onChange={(jellyfin) => setDraft({ ...draft, jellyfin })}
               onLibraries={setLibraries}
               note="This is the account every new Apple TV will use to sign in to Jellyfin."
+              onPushToAll={() => setConfirmPush(true)}
+              pushing={pushMutation.isPending}
             />
           </TabPanel>
           <TabPanel value={tab} index={1}>
@@ -126,6 +151,7 @@ export default function Defaults() {
               value={draft.browse}
               onChange={(browse) => setDraft({ ...draft, browse })}
               libraries={libraries}
+              jellyfin={draft.jellyfin}
             />
           </TabPanel>
           <TabPanel value={tab} index={3}>
@@ -143,42 +169,21 @@ export default function Defaults() {
         </CardContent>
       </Card>
 
-      <Paper
-        elevation={3}
-        sx={{
-          position: 'fixed',
-          bottom: 0,
-          left: { xs: 0, md: '248px' },
-          right: 0,
-          px: { xs: 2, md: 4 },
-          py: 1.5,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2,
-          borderTop: 1,
-          borderColor: 'divider',
-          borderRadius: 0,
-          zIndex: (t) => t.zIndex.appBar - 1,
-        }}
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-          {dirty ? 'You have unsaved changes.' : 'All changes saved.'}
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={
-            saveMutation.isPending ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : (
-              <SaveIcon />
-            )
-          }
-          onClick={() => draft && saveMutation.mutate(draft)}
-          disabled={!dirty || saveMutation.isPending}
-        >
-          {saveMutation.isPending ? 'Saving…' : 'Save defaults'}
-        </Button>
-      </Paper>
+      <SaveBar
+        saving={dirty || saveMutation.isPending}
+        error={saveMutation.isError}
+        onRetry={() => draft && saveMutation.mutate(draft)}
+      />
+
+      <ConfirmDialog
+        open={confirmPush}
+        title="Push this server to all TVs?"
+        message={`Apply this Jellyfin server (${draft.jellyfin.serverUrl || '—'}) to every Apple TV in the fleet now. This overwrites each TV's current Jellyfin server; they reconnect on their next check-in. Per-TV appearance and browse settings are kept.`}
+        confirmLabel="Push to all TVs"
+        busy={pushMutation.isPending}
+        onConfirm={() => draft && pushMutation.mutate(draft)}
+        onCancel={() => setConfirmPush(false)}
+      />
 
       <Snackbar
         open={!!snack}

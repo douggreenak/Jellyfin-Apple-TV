@@ -1,13 +1,14 @@
 import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { getUnitRow } from "./db";
+import { getUnitRow, getSetting, putSetting } from "./db";
 
 /**
  * Admin + device authentication.
  *
- * Admin: single account from env. ADMIN_PASSWORD may be plaintext in .env;
- * we hash it once at boot and compare with bcrypt so the codepath is uniform.
+ * Admin: single account. The password starts from ADMIN_PASSWORD in .env (hashed
+ * once at boot), but once an admin changes it from the dashboard the new hash is
+ * persisted in the DB and takes precedence over the env value on every later boot.
  * Device: X-Unit-Id + X-Unit-Token compared against the stored deviceToken.
  */
 
@@ -19,17 +20,41 @@ interface AdminConfig {
 
 let adminConfig: AdminConfig | null = null;
 
+/** Settings-table key holding the (bcrypt) admin password hash once changed. */
+const ADMIN_PASSWORD_HASH_KEY = "adminPasswordHash";
+
 export function initAuth(opts: {
   username: string;
   password: string;
   jwtSecret: string;
 }): void {
-  const passwordHash = bcrypt.hashSync(opts.password, 10);
+  // A password set from the dashboard (stored hash) wins over the env password,
+  // so changes survive restarts even though .env still has the original value.
+  const storedHash = getSetting(ADMIN_PASSWORD_HASH_KEY);
+  const passwordHash = storedHash ?? bcrypt.hashSync(opts.password, 10);
   adminConfig = {
     username: opts.username,
     passwordHash,
     jwtSecret: opts.jwtSecret,
   };
+}
+
+/**
+ * Change the admin password: verify the current one, then hash + persist the new
+ * one (in memory and in the DB). Returns an error string on failure.
+ */
+export function changeAdminPassword(
+  currentPassword: string,
+  newPassword: string
+): { ok: true } | { ok: false; error: string } {
+  const c = cfg();
+  if (!bcrypt.compareSync(currentPassword, c.passwordHash)) {
+    return { ok: false, error: "Current password is incorrect." };
+  }
+  const newHash = bcrypt.hashSync(newPassword, 10);
+  c.passwordHash = newHash;
+  putSetting(ADMIN_PASSWORD_HASH_KEY, newHash);
+  return { ok: true };
 }
 
 function cfg(): AdminConfig {

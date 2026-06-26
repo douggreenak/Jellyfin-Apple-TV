@@ -4,11 +4,13 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloudSyncIcon from '@mui/icons-material/CloudSync';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { api, type JellyfinConfig, type JellyfinLibrary } from '../../api/client';
 
 interface JellyfinPanelProps {
@@ -17,6 +19,10 @@ interface JellyfinPanelProps {
   /** Surface discovered libraries to the parent so other tabs can use them. */
   onLibraries?: (libraries: JellyfinLibrary[]) => void;
   note?: string;
+  /** When provided (Defaults only), shows a "push this server to all TVs" action. */
+  onPushToAll?: () => void;
+  /** True while the push request is in flight. */
+  pushing?: boolean;
 }
 
 export default function JellyfinPanel({
@@ -24,6 +30,8 @@ export default function JellyfinPanel({
   onChange,
   onLibraries,
   note,
+  onPushToAll,
+  pushing = false,
 }: JellyfinPanelProps) {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{
@@ -108,6 +116,9 @@ export default function JellyfinPanel({
         >
           {testing ? 'Testing…' : 'Test connection'}
         </Button>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+          Testing is optional — your changes save automatically a moment after you stop typing.
+        </Typography>
       </Box>
 
       {result && (
@@ -136,6 +147,28 @@ export default function JellyfinPanel({
             result.message
           )}
         </Alert>
+      )}
+
+      {onPushToAll && (
+        <Box>
+          <Divider sx={{ mb: 2 }} />
+          <Button
+            variant="outlined"
+            color="warning"
+            startIcon={
+              pushing ? <CircularProgress size={16} color="inherit" /> : <CloudUploadIcon />
+            }
+            onClick={onPushToAll}
+            disabled={pushing || !value.serverUrl.trim()}
+          >
+            {pushing ? 'Pushing…' : 'Push this server to all TVs'}
+          </Button>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Applies this Jellyfin server to every existing Apple TV right now, overwriting
+            each TV’s current server. They switch over on their next check-in. (Defaults
+            otherwise only affect TVs that register from now on.)
+          </Typography>
+        </Box>
       )}
     </Stack>
   );

@@ -23,7 +23,6 @@ import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import ReplayIcon from '@mui/icons-material/Replay';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import SaveIcon from '@mui/icons-material/Save';
 import {
   api,
   type CommandType,
@@ -34,6 +33,7 @@ import {
 import StatusDot from '../components/StatusDot';
 import ConfirmDialog from '../components/ConfirmDialog';
 import TabPanel from '../components/TabPanel';
+import SaveBar from '../components/SaveBar';
 import JellyfinPanel from '../components/config/JellyfinPanel';
 import AppearancePanel from '../components/config/AppearancePanel';
 import BrowsePanel from '../components/config/BrowsePanel';
@@ -90,19 +90,11 @@ export default function UnitDetail() {
       api.patchConfig(id, partial),
     onSuccess: (updated) => {
       setDraft(structuredClone(updated.config));
+      setDisplayName(updated.displayName);
       queryClient.setQueryData(['unit', id], updated);
       queryClient.invalidateQueries({ queryKey: ['units'] });
-      setSnack('Settings saved.');
     },
     onError: (err) => setSnack(err instanceof Error ? err.message : 'Save failed.'),
-  });
-
-  const renameMutation = useMutation({
-    mutationFn: (name: string) => api.renameUnit(id, name),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(['unit', id], updated);
-      queryClient.invalidateQueries({ queryKey: ['units'] });
-    },
   });
 
   const commandMutation = useMutation({
@@ -133,23 +125,32 @@ export default function UnitDetail() {
     },
   });
 
-  const handleSave = () => {
-    if (!unit || !draft) return;
-    const nameChanged = displayName.trim() && displayName.trim() !== unit.displayName;
-    const configDiff = diffUnitConfig(unit.config, draft);
-    const configChanged = !isEmptyObject(configDiff);
-
-    if (nameChanged) {
-      renameMutation.mutate(displayName.trim());
-    }
-    if (configChanged) {
-      patchMutation.mutate(configDiff);
-    } else if (!nameChanged) {
-      setSnack('No changes to save.');
-    } else {
-      setSnack('Name updated.');
-    }
+  // Build the pending change set (config diff + an optional displayName change,
+  // sent together so name + settings save atomically in one request).
+  const buildPatch = (): Parameters<typeof api.patchConfig>[1] | null => {
+    if (!unit || !draft) return null;
+    const patch = diffUnitConfig(unit.config, draft) as Record<string, unknown>;
+    const nameChanged = !!displayName.trim() && displayName.trim() !== unit.displayName;
+    if (nameChanged) patch.displayName = displayName.trim();
+    return isEmptyObject(patch)
+      ? null
+      : (patch as Parameters<typeof api.patchConfig>[1]);
   };
+
+  const saveNow = () => {
+    const patch = buildPatch();
+    if (patch) patchMutation.mutate(patch);
+  };
+
+  // Autosave: persist a moment after edits stop — no Save button to find.
+  useEffect(() => {
+    if (patchMutation.isPending) return;
+    const patch = buildPatch();
+    if (!patch) return;
+    const t = setTimeout(() => patchMutation.mutate(patch), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, displayName, unit, patchMutation.isPending]);
 
   if (unitQuery.isLoading || !draft || !unit) {
     if (unitQuery.isError) {
@@ -172,8 +173,7 @@ export default function UnitDetail() {
   }
 
   const nameDirty = displayName.trim() !== '' && displayName.trim() !== unit.displayName;
-  const dirty = hasDraftEdits || nameDirty;
-  const saving = patchMutation.isPending || renameMutation.isPending;
+  const saving = hasDraftEdits || nameDirty || patchMutation.isPending;
 
   return (
     <Box sx={{ pb: 12 }}>
@@ -254,6 +254,7 @@ export default function UnitDetail() {
               value={draft.browse}
               onChange={(browse) => setDraft({ ...draft, browse })}
               libraries={libraries}
+              jellyfin={draft.jellyfin}
             />
           </TabPanel>
 
@@ -275,37 +276,8 @@ export default function UnitDetail() {
         </CardContent>
       </Card>
 
-      {/* Sticky save bar */}
-      <Paper
-        elevation={3}
-        sx={{
-          position: 'fixed',
-          bottom: 0,
-          left: { xs: 0, md: '248px' },
-          right: 0,
-          px: { xs: 2, md: 4 },
-          py: 1.5,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2,
-          borderTop: 1,
-          borderColor: 'divider',
-          borderRadius: 0,
-          zIndex: (t) => t.zIndex.appBar - 1,
-        }}
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-          {dirty ? 'You have unsaved changes.' : 'All changes saved.'}
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-          onClick={handleSave}
-          disabled={!dirty || saving}
-        >
-          {saving ? 'Saving…' : 'Save changes'}
-        </Button>
-      </Paper>
+      {/* Autosave status */}
+      <SaveBar saving={saving} error={patchMutation.isError} onRetry={saveNow} />
 
       <ConfirmDialog
         open={confirmDelete}

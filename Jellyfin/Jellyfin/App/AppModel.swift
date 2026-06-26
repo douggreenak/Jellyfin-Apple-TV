@@ -31,6 +31,11 @@ final class AppModel {
     private(set) var jellyfin: JellyfinClient?
     private(set) var libraries: [BaseItem] = []
 
+    /// The container shown at the browse root. When the unit is locked to a
+    /// library or sub-folder (`browse.homeLibraryId`), this is that container and
+    /// the user can't navigate above it. `nil` shows the multi-library grid.
+    private(set) var rootLibrary: BaseItem?
+
     /// Briefly flashes a full-screen marker when the admin sends "Identify".
     var identifyFlash = false
 
@@ -57,21 +62,6 @@ final class AppModel {
     private let failuresBeforeBlock = 3
 
     var theme: Theme { Theme(appearance: config.appearance) }
-
-    var homeLibrary: BaseItem? {
-        guard let id = config.browse.homeLibraryId else { return nil }
-        return libraries.first { $0.id == id }
-    }
-
-    /// The container to show at the folder-browser root. Prefer an explicitly
-    /// configured home library; otherwise, when the unit has exactly one library,
-    /// drill straight into it — a single-tile grid would just repeat the app title
-    /// (e.g. an app titled "Jellyfin" over a lone library also named "Jellyfin").
-    /// Returns nil to show the multi-library grid.
-    var rootLibrary: BaseItem? {
-        if let home = homeLibrary { return home }
-        return libraries.count == 1 ? libraries.first : nil
-    }
 
     init() {
         let id = DeviceIdentity.shared
@@ -162,6 +152,7 @@ final class AppModel {
             config = newConfig
             jellyfin = nil
             libraries = []
+            rootLibrary = nil
             phase = .waitingForContent
             return
         }
@@ -181,6 +172,7 @@ final class AppModel {
             let views = try await client.userViews()
             self.jellyfin = client
             self.libraries = filteredLibraries(views, browse: newConfig.browse)
+            self.rootLibrary = await resolveRoot(client: client, views: views, browse: newConfig.browse)
             config = newConfig // expose the new configVersion only after the client is ready
             phase = .ready
         } catch {
@@ -189,6 +181,21 @@ final class AppModel {
             phase = .error(message)
             Task { try? await management.heartbeat(lastError: message) }
         }
+    }
+
+    /// Resolves the browse root from `homeLibraryId`. When it names a top-level
+    /// library we use that view; otherwise it may be a **sub-folder** id, so we
+    /// fetch the item directly and lock to it. An unknown/invalid id (or a
+    /// non-container) falls back to the normal library grid. With no lock set, a
+    /// single-library unit drills straight in (its grid would just repeat the title).
+    private func resolveRoot(client: JellyfinClient, views: [BaseItem],
+                             browse: UnitConfig.Browse) async -> BaseItem? {
+        if let id = browse.homeLibraryId, !id.isEmpty {
+            if let view = views.first(where: { $0.id == id }) { return view }
+            if let item = try? await client.item(id: id), item.isContainer { return item }
+            return nil
+        }
+        return libraries.count == 1 ? libraries.first : nil
     }
 
     private func filteredLibraries(_ views: [BaseItem], browse: UnitConfig.Browse) -> [BaseItem] {

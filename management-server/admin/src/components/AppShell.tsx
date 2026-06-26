@@ -12,6 +12,7 @@ import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
+import Snackbar from '@mui/material/Snackbar';
 import Toolbar from '@mui/material/Toolbar';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
@@ -21,8 +22,13 @@ import DevicesOtherIcon from '@mui/icons-material/DevicesOther';
 import TuneIcon from '@mui/icons-material/Tune';
 import MenuIcon from '@mui/icons-material/Menu';
 import LogoutIcon from '@mui/icons-material/Logout';
+import LockResetIcon from '@mui/icons-material/LockReset';
 import LiveTvIcon from '@mui/icons-material/LiveTv';
+import DarkModeIcon from '@mui/icons-material/DarkModeOutlined';
+import LightModeIcon from '@mui/icons-material/LightModeOutlined';
 import { useAuth } from '../auth';
+import { useColorMode } from '../colorMode';
+import ChangePasswordDialog from './ChangePasswordDialog';
 
 const DRAWER_WIDTH = 248;
 
@@ -48,14 +54,22 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { username, logout } = useAuth();
+  const { mode, toggle } = useColorMode();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [snack, setSnack] = useState<string | null>(null);
 
   const handleLogout = () => {
     setMenuAnchor(null);
     logout();
     navigate('/login', { replace: true });
+  };
+
+  const openChangePassword = () => {
+    setMenuAnchor(null);
+    setPwOpen(true);
   };
 
   const drawerContent = (
@@ -116,8 +130,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <AppBar
         position="fixed"
-        color="primary"
-        sx={{ zIndex: (t) => t.zIndex.drawer + 1 }}
+        elevation={mode === 'dark' ? 0 : 4}
+        sx={{
+          zIndex: (t) => t.zIndex.drawer + 1,
+          bgcolor: (t) =>
+            t.palette.mode === 'dark'
+              ? t.palette.background.paper
+              : t.palette.primary.main,
+          color: (t) =>
+            t.palette.mode === 'dark'
+              ? t.palette.text.primary
+              : t.palette.primary.contrastText,
+          borderBottom: (t) =>
+            t.palette.mode === 'dark' ? `1px solid ${t.palette.divider}` : 'none',
+        }}
       >
         <Toolbar>
           {!isDesktop && (
@@ -135,6 +161,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <Typography variant="h6" noWrap sx={{ fontWeight: 700, flexGrow: 1 }}>
             Jellyfin — Fleet
           </Typography>
+          <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+            <IconButton
+              color="inherit"
+              onClick={toggle}
+              size="small"
+              sx={{ mr: 0.5 }}
+              aria-label="Toggle dark mode"
+            >
+              {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Account">
             <IconButton
               onClick={(e) => setMenuAnchor(e.currentTarget)}
@@ -163,6 +200,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
             anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
             transformOrigin={{ vertical: 'top', horizontal: 'right' }}
           >
+            <MenuItem onClick={openChangePassword}>
+              <ListItemIcon>
+                <LockResetIcon fontSize="small" />
+              </ListItemIcon>
+              Change password
+            </MenuItem>
             <MenuItem onClick={handleLogout}>
               <ListItemIcon>
                 <LogoutIcon fontSize="small" />
@@ -218,6 +261,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <Toolbar />
         <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1280, mx: 'auto' }}>{children}</Box>
       </Box>
+
+      <ChangePasswordDialog
+        open={pwOpen}
+        onClose={() => setPwOpen(false)}
+        onSuccess={() => {
+          setPwOpen(false);
+          setSnack('Password changed.');
+        }}
+      />
+
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={3500}
+        onClose={() => setSnack(null)}
+        message={snack ?? ''}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 }

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
 import Chip from '@mui/material/Chip';
 import FormControl from '@mui/material/FormControl';
@@ -11,13 +13,23 @@ import Select, { type SelectChangeEvent } from '@mui/material/Select';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import type { BrowseConfig, BrowseMode, JellyfinLibrary } from '../../api/client';
+import LockIcon from '@mui/icons-material/Lock';
+import {
+  api,
+  type BrowseConfig,
+  type BrowseMode,
+  type JellyfinConfig,
+  type JellyfinLibrary,
+} from '../../api/client';
+import LibraryLockPicker from './LibraryLockPicker';
 
 interface BrowsePanelProps {
   value: BrowseConfig;
   onChange: (next: BrowseConfig) => void;
   /** Libraries discovered via "Test connection" on the Jellyfin tab. */
   libraries: JellyfinLibrary[];
+  /** Jellyfin credentials, needed to browse the tree for the lock picker. */
+  jellyfin: JellyfinConfig;
 }
 
 const MODE_HELP: Record<BrowseMode, string> = {
@@ -26,11 +38,48 @@ const MODE_HELP: Record<BrowseMode, string> = {
   kiosk: 'Lock to a single home library — simplest for little ones.',
 };
 
-export default function BrowsePanel({ value, onChange, libraries }: BrowsePanelProps) {
+export default function BrowsePanel({
+  value,
+  onChange,
+  libraries,
+  jellyfin,
+}: BrowsePanelProps) {
   const set = (patch: Partial<BrowseConfig>) => onChange({ ...value, ...patch });
   const haveLibs = libraries.length > 0;
 
   const libName = (id: string) => libraries.find((l) => l.id === id)?.name ?? id;
+
+  // ---- Lock to a library / sub-folder ----
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [resolvedName, setResolvedName] = useState<string | null>(null);
+  const credsReady = !!jellyfin.serverUrl.trim() && !!jellyfin.username.trim();
+  const lockedId = value.homeLibraryId;
+  const lockedNameFromLibs = lockedId
+    ? libraries.find((l) => l.id === lockedId)?.name
+    : undefined;
+
+  // If locked to a sub-folder (not a top-level library), resolve its name to show.
+  useEffect(() => {
+    if (!lockedId || lockedNameFromLibs || !credsReady) {
+      setResolvedName(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .jellyfinResolve(jellyfin, lockedId)
+      .then((r) => {
+        if (!cancelled) setResolvedName(r.ok ? (r.item?.name ?? null) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedName(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedId, lockedNameFromLibs, credsReady, jellyfin.serverUrl, jellyfin.username, jellyfin.password]);
+
+  const lockedName = lockedNameFromLibs ?? resolvedName ?? null;
 
   const handleHiddenChange = (event: SelectChangeEvent<string[]>) => {
     const v = event.target.value;
@@ -66,38 +115,70 @@ export default function BrowsePanel({ value, onChange, libraries }: BrowsePanelP
         </Alert>
       )}
 
-      {/* Home library — used as the kiosk target and the default landing library. */}
-      {haveLibs ? (
-        <TextField
-          select
-          label="Home library"
-          fullWidth
-          value={value.homeLibraryId ?? ''}
-          onChange={(e) => set({ homeLibraryId: e.target.value || null })}
-          helperText={
-            value.mode === 'kiosk'
-              ? 'Kiosk mode locks to this library.'
-              : 'The library the app opens to.'
-          }
-        >
-          <MenuItem value="">
-            <em>None (use server default)</em>
-          </MenuItem>
-          {libraries.map((lib) => (
-            <MenuItem key={lib.id} value={lib.id}>
-              {lib.name}
-            </MenuItem>
-          ))}
-        </TextField>
-      ) : (
-        <TextField
-          label="Home library ID"
-          fullWidth
-          value={value.homeLibraryId ?? ''}
-          onChange={(e) => set({ homeLibraryId: e.target.value || null })}
-          helperText="Library the app opens to (or kiosk target)."
-        />
-      )}
+      {/* Lock to a library or sub-folder (e.g. Kids, Pre-K). */}
+      <Box
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: lockedId ? 'primary.main' : 'divider',
+          bgcolor: 'action.hover',
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <LockIcon fontSize="small" /> Lock to a library or folder
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          Pin this TV to one library or sub-folder (e.g. “Kids”, “Pre-K”). It opens
+          straight there and can’t browse anywhere else.
+        </Typography>
+
+        {lockedId ? (
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            flexWrap="wrap"
+            useFlexGap
+            sx={{ mt: 1.5 }}
+          >
+            <Chip
+              color="primary"
+              icon={<LockIcon />}
+              label={`Locked to: ${lockedName ?? `folder ${lockedId.slice(0, 8)}…`}`}
+            />
+            <Button size="small" onClick={() => setPickerOpen(true)} disabled={!credsReady}>
+              Change
+            </Button>
+            <Button size="small" color="error" onClick={() => set({ homeLibraryId: null })}>
+              Remove lock
+            </Button>
+          </Stack>
+        ) : (
+          <Button
+            variant="outlined"
+            startIcon={<LockIcon />}
+            onClick={() => setPickerOpen(true)}
+            disabled={!credsReady}
+            sx={{ mt: 1.5 }}
+          >
+            Lock to a library or folder…
+          </Button>
+        )}
+
+        {!credsReady && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Add the Jellyfin server and username on the Jellyfin tab first.
+          </Typography>
+        )}
+      </Box>
+
+      <LibraryLockPicker
+        open={pickerOpen}
+        creds={jellyfin}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(item) => set({ homeLibraryId: item.id })}
+      />
 
       {/* Allowed libraries — only meaningful in curated mode. */}
       {value.mode === 'curated' &&

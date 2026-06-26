@@ -174,11 +174,38 @@ export const loginSchema = z
   .object({ username: z.string(), password: z.string() })
   .strict();
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(8),
+  })
+  .strict();
+
 export const jellyfinTestSchema = z
   .object({
     serverUrl: z.string().min(1),
     username: z.string(),
     password: z.string(),
+  })
+  .strict();
+
+/** Browse the Jellyfin tree (top-level when parentId omitted) for the lock-to-folder picker. */
+export const jellyfinBrowseSchema = z
+  .object({
+    serverUrl: z.string().min(1),
+    username: z.string(),
+    password: z.string(),
+    parentId: z.string().optional(),
+  })
+  .strict();
+
+/** Resolve a single item id to its name/type (to display what a TV is locked to). */
+export const jellyfinResolveSchema = z
+  .object({
+    serverUrl: z.string().min(1),
+    username: z.string(),
+    password: z.string(),
+    itemId: z.string().min(1),
   })
   .strict();
 

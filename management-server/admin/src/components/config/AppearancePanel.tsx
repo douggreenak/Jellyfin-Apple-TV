@@ -58,7 +58,8 @@ export default function AppearancePanel({ value, onChange }: AppearancePanelProp
                     width: 20,
                     height: 20,
                     borderRadius: '4px',
-                    border: '1px solid rgba(0,0,0,0.15)',
+                    border: '1px solid',
+                    borderColor: 'divider',
                     bgcolor: hexValid ? value.accentColorHex : 'transparent',
                   }}
                 />
