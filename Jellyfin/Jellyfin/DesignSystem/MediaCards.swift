@@ -61,68 +61,53 @@ struct CardCaption: View {
     }
 }
 
-// MARK: - Poster card (2:3)
+// MARK: - Media tile — honors the unit's configured poster style
 
-struct PosterCard: View {
+/// A focusable content tile whose shape follows the configured `PosterStyle`:
+/// `.poster` (2:3, primary art), `.thumb` (1:1, primary art), or `.wide` (16:9,
+/// landscape/backdrop art). The grid passes the style so every tile in a folder
+/// matches. This is what makes the admin's "Poster style" control take effect.
+struct MediaTile: View {
     let item: BaseItem
-    var showTitle: Bool = true
+    let style: UnitConfig.PosterStyle
 
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
 
+    private var width: CGFloat { theme.tileWidth(for: style) }
+    private var height: CGFloat { theme.tileHeight(for: style) }
+    private var isWide: Bool { style == .wide }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            NavigationLink(value: item) { poster }
+            NavigationLink(value: item) { art }
                 .buttonStyle(.card)
-            if showTitle {
-                CardCaption(title: item.name, subtitle: item.cardSubtitle, width: theme.posterWidth)
+            if theme.appearance.showItemTitles {
+                CardCaption(title: titleText, subtitle: subtitleText, width: width)
             }
         }
     }
 
-    private var poster: some View {
+    private var art: some View {
         ZStack(alignment: .bottom) {
-            CachedAsyncImage(url: model.jellyfin?.imageURL(for: item, maxHeight: 540)) {
+            CachedAsyncImage(url: artURL) {
                 PlaceholderTile(systemImage: item.systemImageName)
             }
-            .frame(width: theme.posterWidth, height: theme.posterHeight)
+            .frame(width: width, height: height)
             .clipped()
             if let p = item.userData?.progress, p > 0.01, p < 0.99 {
                 ProgressBar(progress: p)
             }
         }
-        .frame(width: theme.posterWidth, height: theme.posterHeight)
-    }
-}
-
-// MARK: - Landscape card (16:9) — episodes / wide thumbnails
-
-struct LandscapeCard: View {
-    let item: BaseItem
-
-    @Environment(AppModel.self) private var model
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            NavigationLink(value: item) { thumb }
-                .buttonStyle(.card)
-            CardCaption(title: titleText, subtitle: subtitleText, width: theme.landscapeWidth)
-        }
+        .frame(width: width, height: height)
     }
 
-    private var thumb: some View {
-        ZStack(alignment: .bottom) {
-            CachedAsyncImage(url: model.jellyfin?.wideImageURL(for: item, maxWidth: 700)) {
-                PlaceholderTile(systemImage: item.systemImageName)
-            }
-            .frame(width: theme.landscapeWidth, height: theme.landscapeHeight)
-            .clipped()
-            if let p = item.userData?.progress, p > 0.01, p < 0.99 {
-                ProgressBar(progress: p)
-            }
-        }
-        .frame(width: theme.landscapeWidth, height: theme.landscapeHeight)
+    /// Wide tiles use the landscape (thumb/backdrop) image; tall/square tiles use
+    /// the primary poster.
+    private var artURL: URL? {
+        isWide
+            ? model.jellyfin?.wideImageURL(for: item, maxWidth: Int(width * 2))
+            : model.jellyfin?.imageURL(for: item, maxHeight: Int(height * 2))
     }
 
     private var titleText: String {

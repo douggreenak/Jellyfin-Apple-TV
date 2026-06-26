@@ -28,7 +28,7 @@ export const DEFAULT_TEMPLATE: UnitConfig = {
     accentColorHex: "#5E5CE6",
     showClock: true,
     showItemTitles: true,
-    posterStyle: "poster",
+    posterStyle: "wide",
   },
   playback: {
     autoplayNext: true,

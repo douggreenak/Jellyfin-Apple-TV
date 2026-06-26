@@ -93,7 +93,7 @@ struct UnitConfig: Codable, Equatable {
 
         init(appTitle: String = "Jellyfin", theme: Theme = .dark,
              accentColorHex: String = "#5E5CE6", showClock: Bool = true,
-             showItemTitles: Bool = true, posterStyle: PosterStyle = .poster) {
+             showItemTitles: Bool = true, posterStyle: PosterStyle = .wide) {
             self.appTitle = appTitle
             self.theme = theme
             self.accentColorHex = accentColorHex

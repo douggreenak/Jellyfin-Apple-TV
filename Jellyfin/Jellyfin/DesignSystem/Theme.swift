@@ -51,18 +51,23 @@ struct Theme: Equatable {
     let shelfItemSpacing: CGFloat = 36
     let rowSpacing: CGFloat = 52
 
-    /// Card width for the configured poster style.
-    var cardWidth: CGFloat {
-        switch appearance.posterStyle {
+    /// Tile width for a given poster style.
+    func tileWidth(for style: UnitConfig.PosterStyle) -> CGFloat {
+        switch style {
         case .poster: return 260
         case .thumb:  return 300
         case .wide:   return 420
         }
     }
 
-    var cardHeight: CGFloat {
-        cardWidth / appearance.posterStyle.aspectRatio
+    /// Tile height for a given poster style (width ÷ aspect ratio).
+    func tileHeight(for style: UnitConfig.PosterStyle) -> CGFloat {
+        tileWidth(for: style) / style.aspectRatio
     }
+
+    /// Tile size for the unit's configured poster style.
+    var cardWidth: CGFloat { tileWidth(for: appearance.posterStyle) }
+    var cardHeight: CGFloat { tileHeight(for: appearance.posterStyle) }
 
     /// A clean, professional near-black backdrop behind the whole app (no color
     /// wash) — a subtle vertical gradient for depth, like a native tvOS app.

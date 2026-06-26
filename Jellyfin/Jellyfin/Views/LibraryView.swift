@@ -56,8 +56,14 @@ struct LibraryFolderView: View {
 
     private var isEpisodeFolder: Bool { parent.type == "Season" }
 
+    /// The tile shape for this folder: the unit's configured poster style, except
+    /// episode folders, which always use wide tiles (episodes only have landscape art).
+    private var tileStyle: UnitConfig.PosterStyle {
+        isEpisodeFolder ? .wide : theme.appearance.posterStyle
+    }
+
     private var columns: [GridItem] {
-        let width = isEpisodeFolder ? theme.landscapeWidth : theme.posterWidth
+        let width = theme.tileWidth(for: tileStyle)
         return [GridItem(.adaptive(minimum: width, maximum: width + 60), spacing: 40, alignment: .top)]
     }
 
@@ -79,11 +85,7 @@ struct LibraryFolderView: View {
                 } else {
                     LazyVGrid(columns: columns, spacing: 44) {
                         ForEach(items) { item in
-                            if item.type == "Episode" {
-                                LandscapeCard(item: item)
-                            } else {
-                                PosterCard(item: item)
-                            }
+                            MediaTile(item: item, style: tileStyle)
                         }
                     }
                     .padding(.horizontal, theme.screenPadding)
