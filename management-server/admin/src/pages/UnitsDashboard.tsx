@@ -19,6 +19,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
+import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
@@ -915,9 +916,26 @@ function UnitCard({
             inputProps={{ 'aria-label': `Select ${unit.displayName}` }}
           />
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" fontWeight={600} noWrap title={unit.displayName}>
-              {unit.displayName}
-            </Typography>
+            <Tooltip title="Open settings">
+              <Link
+                component="button"
+                type="button"
+                onClick={onOpen}
+                underline="hover"
+                color="inherit"
+                sx={{
+                  display: 'block',
+                  width: '100%',
+                  p: 0,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <Typography variant="subtitle1" fontWeight={600} noWrap title={unit.displayName}>
+                  {unit.displayName}
+                </Typography>
+              </Link>
+            </Tooltip>
             <Tooltip title={formatTimestamp(status.lastSeenAt)}>
               <Typography variant="caption" color="text.secondary">
                 {online ? 'Online' : 'Last seen'} · {timeAgo(status.lastSeenAt)}
