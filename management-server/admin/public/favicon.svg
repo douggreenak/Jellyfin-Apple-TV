@@ -1,6 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#5E5CE6"/>
-  <path d="M20 22h24a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H20a2 2 0 0 1-2-2V24a2 2 0 0 1 2-2Z" fill="#fff" opacity="0.95"/>
-  <path d="M26 48h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="32" cy="32" r="5" fill="#5E5CE6"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4285F4"/>
+      <stop offset="1" stop-color="#1A73E8"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <!-- TV stand -->
+  <path d="M32 41v7M25 49h14" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+  <!-- TV screen -->
+  <rect x="13" y="15" width="38" height="27" rx="5.5" fill="#fff"/>
+  <!-- play triangle -->
+  <path d="M28.5 22.5 L41.5 28.5 L28.5 34.5 Z" fill="#1A73E8"/>
 </svg>

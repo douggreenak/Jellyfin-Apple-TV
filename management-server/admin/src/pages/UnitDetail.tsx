@@ -38,7 +38,6 @@ import JellyfinPanel from '../components/config/JellyfinPanel';
 import AppearancePanel from '../components/config/AppearancePanel';
 import BrowsePanel from '../components/config/BrowsePanel';
 import PlaybackPanel from '../components/config/PlaybackPanel';
-import SecurityPanel from '../components/config/SecurityPanel';
 import { diffUnitConfig, isEmptyObject } from '../util/diff';
 import { formatTimestamp, timeAgo } from '../util/time';
 
@@ -213,7 +212,6 @@ export default function UnitDetail() {
           <Tab label="Appearance" />
           <Tab label="Browse" />
           <Tab label="Playback" />
-          <Tab label="Security" />
         </Tabs>
 
         <CardContent sx={{ px: { xs: 2, md: 3 } }}>
@@ -263,14 +261,6 @@ export default function UnitDetail() {
             <PlaybackPanel
               value={draft.playback}
               onChange={(playback) => setDraft({ ...draft, playback })}
-            />
-          </TabPanel>
-
-          {/* Security */}
-          <TabPanel value={tab} index={5}>
-            <SecurityPanel
-              value={draft.security}
-              onChange={(security) => setDraft({ ...draft, security })}
             />
           </TabPanel>
         </CardContent>

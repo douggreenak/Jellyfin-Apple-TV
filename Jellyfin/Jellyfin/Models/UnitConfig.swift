@@ -17,7 +17,6 @@ struct UnitConfig: Codable, Equatable {
     var browse: Browse
     var appearance: Appearance
     var playback: Playback
-    var security: Security
     var configVersion: Int
     var updatedAt: String
 
@@ -115,16 +114,6 @@ struct UnitConfig: Codable, Equatable {
         }
     }
 
-    struct Security: Codable, Equatable {
-        var settingsPinEnabled: Bool
-        var settingsPin: String?
-
-        init(settingsPinEnabled: Bool = false, settingsPin: String? = nil) {
-            self.settingsPinEnabled = settingsPinEnabled
-            self.settingsPin = settingsPin
-        }
-    }
-
     init(unitId: String,
          displayName: String = "New Apple TV",
          groupId: String? = nil,
@@ -132,7 +121,6 @@ struct UnitConfig: Codable, Equatable {
          browse: Browse = Browse(),
          appearance: Appearance = Appearance(),
          playback: Playback = Playback(),
-         security: Security = Security(),
          configVersion: Int = 1,
          updatedAt: String = "") {
         self.unitId = unitId
@@ -142,7 +130,6 @@ struct UnitConfig: Codable, Equatable {
         self.browse = browse
         self.appearance = appearance
         self.playback = playback
-        self.security = security
         self.configVersion = configVersion
         self.updatedAt = updatedAt
     }

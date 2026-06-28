@@ -5,7 +5,7 @@
   "description": "Canonical configuration for a single Apple TV unit. The management server is the source of truth; the device caches it and re-fetches when configVersion changes.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["unitId", "displayName", "jellyfin", "browse", "appearance", "playback", "security", "configVersion", "updatedAt"],
+  "required": ["unitId", "displayName", "jellyfin", "browse", "appearance", "playback", "configVersion", "updatedAt"],
   "properties": {
     "unitId": { "type": "string", "description": "UUID generated on the device, stable per install." },
     "displayName": { "type": "string", "default": "New Apple TV" },
@@ -52,15 +52,6 @@
         "autoplayNext": { "type": "boolean", "default": true },
         "maxBitrateMbps": { "type": "number", "minimum": 0, "default": 0 },
         "preferDirectPlay": { "type": "boolean", "default": true }
-      }
-    },
-    "security": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["settingsPinEnabled", "settingsPin"],
-      "properties": {
-        "settingsPinEnabled": { "type": "boolean", "default": false },
-        "settingsPin": { "type": ["string", "null"], "pattern": "^[0-9]{4}$", "default": null }
       }
     },
     "configVersion": { "type": "integer", "minimum": 1, "default": 1 },

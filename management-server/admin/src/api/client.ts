@@ -58,11 +58,6 @@ export interface PlaybackConfig {
   preferDirectPlay: boolean;
 }
 
-export interface SecurityConfig {
-  settingsPinEnabled: boolean;
-  settingsPin: string | null; // 4 digits
-}
-
 export interface UnitConfig {
   unitId: string;
   displayName: string;
@@ -71,7 +66,6 @@ export interface UnitConfig {
   browse: BrowseConfig;
   appearance: AppearanceConfig;
   playback: PlaybackConfig;
-  security: SecurityConfig;
   configVersion: number;
   updatedAt: string; // ISO8601
 }

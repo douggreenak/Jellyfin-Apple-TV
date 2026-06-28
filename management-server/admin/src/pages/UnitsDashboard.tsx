@@ -43,6 +43,8 @@ import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import CloseIcon from '@mui/icons-material/Close';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import ViewCompactIcon from '@mui/icons-material/ViewCompact';
+import GridViewIcon from '@mui/icons-material/GridView';
+import ViewListIcon from '@mui/icons-material/ViewList';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import { api, type BulkAction, type CommandType, type ServerExport, type Unit } from '../api/client';
@@ -54,6 +56,7 @@ const POLL_MS = 5_000;
 
 type StatusFilter = 'all' | 'online' | 'offline';
 type Density = 'comfortable' | 'compact';
+type ViewMode = 'grid' | 'list';
 
 export default function UnitsDashboard() {
   const navigate = useNavigate();
@@ -64,6 +67,7 @@ export default function UnitsDashboard() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [density, setDensity] = useState<Density>('comfortable');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [migrateOpen, setMigrateOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -232,6 +236,8 @@ export default function UnitsDashboard() {
                   onStatusFilter={setStatusFilter}
                   density={density}
                   onDensity={setDensity}
+                  viewMode={viewMode}
+                  onViewMode={setViewMode}
                   shownCount={filtered.length}
                   totalCount={managed.length}
                   allSelected={allFilteredSelected}
@@ -262,6 +268,22 @@ export default function UnitsDashboard() {
                       No devices match your filters. Try clearing the search or status filter.
                     </Typography>
                   </Paper>
+                ) : viewMode === 'list' ? (
+                  <Stack spacing={1.25} sx={{ mt: 2 }}>
+                    {filtered.map((unit) => (
+                      <UnitRow
+                        key={unit.unitId}
+                        unit={unit}
+                        selected={selected.has(unit.unitId)}
+                        onToggleSelect={() => toggleOne(unit.unitId)}
+                        onOpen={() => navigate(`/units/${unit.unitId}`)}
+                        onCommand={(type) => commandMutation.mutate({ id: unit.unitId, type })}
+                        commandPending={
+                          commandMutation.isPending && commandMutation.variables?.id === unit.unitId
+                        }
+                      />
+                    ))}
+                  </Stack>
                 ) : (
                   <Grid container spacing={density === 'compact' ? 1.5 : 3} sx={{ mt: 0 }}>
                     {filtered.map((unit) => (
@@ -507,6 +529,8 @@ interface FilterBarProps {
   onStatusFilter: (v: StatusFilter) => void;
   density: Density;
   onDensity: (v: Density) => void;
+  viewMode: ViewMode;
+  onViewMode: (v: ViewMode) => void;
   shownCount: number;
   totalCount: number;
   allSelected: boolean;
@@ -522,6 +546,8 @@ function FilterBar({
   onStatusFilter,
   density,
   onDensity,
+  viewMode,
+  onViewMode,
   shownCount,
   totalCount,
   allSelected,
@@ -582,14 +608,30 @@ function FilterBar({
           <ToggleButton value="offline">Offline</ToggleButton>
         </ToggleButtonGroup>
 
-        <Tooltip title={density === 'compact' ? 'Comfortable view' : 'Compact view'}>
-          <IconButton
-            size="small"
-            onClick={() => onDensity(density === 'compact' ? 'comfortable' : 'compact')}
-          >
-            {density === 'compact' ? <ViewModuleIcon /> : <ViewCompactIcon />}
-          </IconButton>
-        </Tooltip>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={viewMode}
+          onChange={(_e, v: ViewMode | null) => v && onViewMode(v)}
+        >
+          <ToggleButton value="grid" aria-label="Grid view">
+            <GridViewIcon fontSize="small" />
+          </ToggleButton>
+          <ToggleButton value="list" aria-label="List view">
+            <ViewListIcon fontSize="small" />
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        {viewMode === 'grid' && (
+          <Tooltip title={density === 'compact' ? 'Comfortable cards' : 'Compact cards'}>
+            <IconButton
+              size="small"
+              onClick={() => onDensity(density === 'compact' ? 'comfortable' : 'compact')}
+            >
+              {density === 'compact' ? <ViewModuleIcon /> : <ViewCompactIcon />}
+            </IconButton>
+          </Tooltip>
+        )}
 
         <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
           {shownCount} of {totalCount}
@@ -1037,5 +1079,125 @@ function UnitCard({
         </Button>
       </CardActions>
     </Card>
+  );
+}
+
+type UnitRowProps = Omit<UnitCardProps, 'density'>;
+
+function UnitRow({
+  unit,
+  selected,
+  onToggleSelect,
+  onOpen,
+  onCommand,
+  commandPending,
+}: UnitRowProps) {
+  const { status } = unit;
+  const online = status.online;
+  const nowPlayingTitle = status.nowPlaying?.title;
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        position: 'relative',
+        overflow: 'hidden',
+        p: 1.25,
+        pl: 2.25,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        borderColor: selected ? 'primary.main' : 'divider',
+        borderWidth: selected ? 2 : 1,
+        transition: 'border-color .15s ease, box-shadow .15s ease',
+        '&:hover': { boxShadow: '0 2px 10px rgba(16,24,40,0.10)' },
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          insetBlock: 0,
+          left: 0,
+          width: 4,
+          bgcolor: online ? 'success.main' : 'grey.400',
+        },
+      }}
+    >
+      <Checkbox
+        size="small"
+        checked={selected}
+        onChange={onToggleSelect}
+        sx={{ p: 0.5 }}
+        inputProps={{ 'aria-label': `Select ${unit.displayName}` }}
+      />
+
+      <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+        <Tooltip title="Open settings">
+          <Link
+            component="button"
+            type="button"
+            onClick={onOpen}
+            underline="hover"
+            color="inherit"
+            sx={{ display: 'block', width: '100%', p: 0, textAlign: 'left', cursor: 'pointer' }}
+          >
+            <Typography variant="subtitle1" fontWeight={600} noWrap title={unit.displayName}>
+              {unit.displayName}
+            </Typography>
+          </Link>
+        </Tooltip>
+        <Typography variant="caption" color="text.secondary" noWrap component="div">
+          {online ? 'Online' : 'Last seen'} · {timeAgo(status.lastSeenAt)}
+          {nowPlayingTitle ? ` · Playing: ${nowPlayingTitle}` : ''}
+        </Typography>
+      </Box>
+
+      <Stack direction="row" spacing={0.75} sx={{ display: { xs: 'none', lg: 'flex' }, flexShrink: 0 }}>
+        {status.model && <Chip size="small" variant="outlined" label={status.model} />}
+        {status.tvosVersion && (
+          <Chip size="small" variant="outlined" label={`tvOS ${status.tvosVersion}`} />
+        )}
+      </Stack>
+
+      <Chip
+        size="small"
+        label={online ? 'Online' : 'Offline'}
+        color={online ? 'success' : 'default'}
+        variant={online ? 'filled' : 'outlined'}
+        sx={{ fontWeight: 600, flexShrink: 0 }}
+      />
+
+      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+        <Tooltip title="Flash the screen to find this TV">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onCommand('identify')}
+              disabled={!online || commandPending}
+            >
+              <LightbulbIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Re-fetch config and reload the app">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => onCommand('reload')}
+              disabled={!online || commandPending}
+            >
+              <ReplayIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Button
+          size="small"
+          variant="contained"
+          startIcon={<SettingsIcon />}
+          onClick={onOpen}
+          sx={{ ml: 0.5 }}
+        >
+          Manage
+        </Button>
+      </Stack>
+    </Paper>
   );
 }

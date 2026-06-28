@@ -57,8 +57,6 @@ JSON Schema lives in [`UNIT_CONFIG_SCHEMA.json`](./UNIT_CONFIG_SCHEMA.json). Sum
 | `playback.autoplayNext` | bool | Auto-advance within a folder. |
 | `playback.maxBitrateMbps` | number | `0` = unlimited / direct play. |
 | `playback.preferDirectPlay` | bool | Prefer direct play over transcode. |
-| `security.settingsPinEnabled` | bool | Reserved — the appliance has no on-device settings screen to gate. |
-| `security.settingsPin` | string \| null | 4-digit PIN. |
 | `configVersion` | integer | Bumped by the server on every change; device polls this. |
 | `updatedAt` | string (ISO-8601) | Last modification time. |
 
@@ -193,7 +191,7 @@ management-server/
       api/client.ts          typed fetch wrapper + auth token storage
       pages/Login.tsx
       pages/UnitsDashboard.tsx   cards/table of all units, online dot, quick actions
-      pages/UnitDetail.tsx       full config editor (tabs: General, Jellyfin, Appearance, Playback, Security)
+      pages/UnitDetail.tsx       full config editor (tabs: General, Jellyfin, Appearance, Playback)
       pages/Defaults.tsx         shared Jellyfin account + default template
       components/…
   docker-compose.yml         server + admin (nginx) on the Linux box

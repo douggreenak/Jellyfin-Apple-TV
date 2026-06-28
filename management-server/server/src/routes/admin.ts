@@ -441,7 +441,19 @@ adminRouter.get("/export", requireAdmin, (_req: Request, res: Response) => {
  * status is preserved for units that already exist.
  */
 adminRouter.post("/import", requireAdmin, (req: Request, res: Response) => {
-  const parsed = serverImportSchema.safeParse(req.body);
+  // Tolerate older backups that still carry the removed `security` block.
+  const body = req.body;
+  if (body && typeof body === "object") {
+    if (body.defaults && typeof body.defaults === "object") {
+      delete body.defaults.security;
+    }
+    if (Array.isArray(body.units)) {
+      for (const u of body.units) {
+        if (u?.config && typeof u.config === "object") delete u.config.security;
+      }
+    }
+  }
+  const parsed = serverImportSchema.safeParse(body);
   if (!parsed.success) {
     res
       .status(400)

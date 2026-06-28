@@ -35,10 +35,6 @@ export const DEFAULT_TEMPLATE: UnitConfig = {
     maxBitrateMbps: 0,
     preferDirectPlay: true,
   },
-  security: {
-    settingsPinEnabled: false,
-    settingsPin: null,
-  },
   configVersion: 1,
   updatedAt: new Date(0).toISOString(),
 };

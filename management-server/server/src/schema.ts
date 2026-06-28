@@ -14,10 +14,6 @@ const hexColor = z
   .string()
   .regex(/^#([0-9a-fA-F]{6})$/, "accentColorHex must be #RRGGBB");
 
-const pin = z
-  .string()
-  .regex(/^[0-9]{4}$/, "settingsPin must be exactly 4 digits");
-
 export const jellyfinSchema = z
   .object({
     serverUrl: z.string(),
@@ -54,13 +50,6 @@ export const playbackSchema = z
   })
   .strict();
 
-export const securitySchema = z
-  .object({
-    settingsPinEnabled: z.boolean(),
-    settingsPin: pin.nullable(),
-  })
-  .strict();
-
 export const unitConfigSchema = z
   .object({
     unitId: z.string(),
@@ -70,7 +59,6 @@ export const unitConfigSchema = z
     browse: browseSchema,
     appearance: appearanceSchema,
     playback: playbackSchema,
-    security: securitySchema,
     configVersion: z.number().int().min(1),
     updatedAt: z.string(),
   })
@@ -81,7 +69,6 @@ export type Jellyfin = z.infer<typeof jellyfinSchema>;
 export type Browse = z.infer<typeof browseSchema>;
 export type Appearance = z.infer<typeof appearanceSchema>;
 export type Playback = z.infer<typeof playbackSchema>;
-export type Security = z.infer<typeof securitySchema>;
 
 /**
  * Deep-partial schema for PATCH /admin/units/:unitId/config bodies.
@@ -99,7 +86,6 @@ export const unitConfigPatchSchema = z
     browse: browseSchema.partial().strict(),
     appearance: appearanceSchema.partial().strict(),
     playback: playbackSchema.partial().strict(),
-    security: securitySchema.partial().strict(),
   })
   .partial()
   .strict();

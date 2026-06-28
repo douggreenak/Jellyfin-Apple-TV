@@ -17,7 +17,6 @@ import JellyfinPanel from '../components/config/JellyfinPanel';
 import AppearancePanel from '../components/config/AppearancePanel';
 import BrowsePanel from '../components/config/BrowsePanel';
 import PlaybackPanel from '../components/config/PlaybackPanel';
-import SecurityPanel from '../components/config/SecurityPanel';
 import { diffUnitConfig, isEmptyObject } from '../util/diff';
 
 export default function Defaults() {
@@ -126,7 +125,6 @@ export default function Defaults() {
           <Tab label="Appearance" />
           <Tab label="Browse" />
           <Tab label="Playback" />
-          <Tab label="Security" />
         </Tabs>
 
         <CardContent sx={{ px: { xs: 2, md: 3 } }}>
@@ -158,12 +156,6 @@ export default function Defaults() {
             <PlaybackPanel
               value={draft.playback}
               onChange={(playback) => setDraft({ ...draft, playback })}
-            />
-          </TabPanel>
-          <TabPanel value={tab} index={4}>
-            <SecurityPanel
-              value={draft.security}
-              onChange={(security) => setDraft({ ...draft, security })}
             />
           </TabPanel>
         </CardContent>

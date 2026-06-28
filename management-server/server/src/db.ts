@@ -69,12 +69,57 @@ export function initDb(dbPath: string): Database.Database {
     );
   }
 
+  // Migration: the per-unit `security` (settings PIN) feature was removed. Strip it
+  // from any stored unit configs and the defaults template so they validate against
+  // the current (strict) schema. Idempotent — only rewrites rows that still have it.
+  stripDroppedConfigKeys(db);
+
   return db;
 }
 
 export function getDb(): Database.Database {
   if (!db) throw new Error("Database not initialized. Call initDb() first.");
   return db;
+}
+
+/** Remove config keys that have been dropped from the schema (currently `security`). */
+function stripDroppedConfigKeys(database: Database.Database): void {
+  const DROPPED = ["security"];
+  const strip = (json: string): string | null => {
+    const obj = JSON.parse(json) as Record<string, unknown>;
+    let changed = false;
+    for (const key of DROPPED) {
+      if (key in obj) {
+        delete obj[key];
+        changed = true;
+      }
+    }
+    return changed ? JSON.stringify(obj) : null;
+  };
+
+  // Defaults template.
+  const tmpl = database
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get(DEFAULTS_KEY) as { value: string } | undefined;
+  if (tmpl) {
+    const next = strip(tmpl.value);
+    if (next) {
+      database
+        .prepare("UPDATE settings SET value = ? WHERE key = ?")
+        .run(next, DEFAULTS_KEY);
+    }
+  }
+
+  // Every unit's config.
+  const rows = database.prepare("SELECT unitId, config FROM units").all() as {
+    unitId: string;
+    config: string;
+  }[];
+  const update = database.prepare("UPDATE units SET config = ? WHERE unitId = ?");
+  for (const row of rows) {
+    const next = strip(row.config);
+    if (next) update.run(next, row.unitId);
+  }
 }
 
 /* ----------------------------- Units helpers ----------------------------- */

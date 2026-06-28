@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import UnitsDashboard from './pages/UnitsDashboard';
 import UnitDetail from './pages/UnitDetail';
 import Defaults from './pages/Defaults';
+import Data from './pages/Data';
 
 export default function App() {
   return (
@@ -28,6 +29,16 @@ export default function App() {
             <RequireAuth>
               <AppShell>
                 <UnitDetail />
+              </AppShell>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/data"
+          element={
+            <RequireAuth>
+              <AppShell>
+                <Data />
               </AppShell>
             </RequireAuth>
           }
