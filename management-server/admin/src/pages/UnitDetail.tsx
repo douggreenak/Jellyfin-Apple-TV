@@ -34,6 +34,7 @@ import StatusDot from '../components/StatusDot';
 import ConfirmDialog from '../components/ConfirmDialog';
 import TabPanel from '../components/TabPanel';
 import SaveBar from '../components/SaveBar';
+import PowerPanel from '../components/PowerPanel';
 import JellyfinPanel from '../components/config/JellyfinPanel';
 import AppearancePanel from '../components/config/AppearancePanel';
 import BrowsePanel from '../components/config/BrowsePanel';
@@ -227,6 +228,7 @@ export default function UnitDetail() {
               commandPending={commandMutation.isPending}
               onDelete={() => setConfirmDelete(true)}
             />
+            <PowerPanel unitId={id} />
           </TabPanel>
 
           {/* Jellyfin */}

@@ -34,6 +34,8 @@ import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import ReplayIcon from '@mui/icons-material/Replay';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import PlayCircleIcon from '@mui/icons-material/PlayCircle';
+import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew';
+import BedtimeOutlinedIcon from '@mui/icons-material/BedtimeOutlined';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AddTaskIcon from '@mui/icons-material/AddTask';
 import NewReleasesIcon from '@mui/icons-material/NewReleases';
@@ -93,6 +95,12 @@ export default function UnitsDashboard() {
       invalidate();
     },
     onError: (err) => setSnack(err instanceof Error ? err.message : 'Command failed.'),
+  });
+
+  const powerMutation = useMutation({
+    mutationFn: ({ id, on }: { id: string; on: boolean }) => api.setPower(id, on),
+    onSuccess: (_d, vars) => setSnack(vars.on ? 'Wake command sent.' : 'Sleep command sent.'),
+    onError: (err) => setSnack(err instanceof Error ? err.message : 'Power command failed.'),
   });
 
   const adoptMutation = useMutation({
@@ -281,6 +289,10 @@ export default function UnitsDashboard() {
                         commandPending={
                           commandMutation.isPending && commandMutation.variables?.id === unit.unitId
                         }
+                        onPower={(on) => powerMutation.mutate({ id: unit.unitId, on })}
+                        powerPending={
+                          powerMutation.isPending && powerMutation.variables?.id === unit.unitId
+                        }
                       />
                     ))}
                   </Stack>
@@ -304,6 +316,10 @@ export default function UnitsDashboard() {
                           onCommand={(type) => commandMutation.mutate({ id: unit.unitId, type })}
                           commandPending={
                             commandMutation.isPending && commandMutation.variables?.id === unit.unitId
+                          }
+                          onPower={(on) => powerMutation.mutate({ id: unit.unitId, on })}
+                          powerPending={
+                            powerMutation.isPending && powerMutation.variables?.id === unit.unitId
                           }
                         />
                       </Grid>
@@ -908,6 +924,8 @@ interface UnitCardProps {
   onOpen: () => void;
   onCommand: (type: CommandType) => void;
   commandPending: boolean;
+  onPower: (on: boolean) => void;
+  powerPending: boolean;
 }
 
 function UnitCard({
@@ -918,6 +936,8 @@ function UnitCard({
   onOpen,
   onCommand,
   commandPending,
+  onPower,
+  powerPending,
 }: UnitCardProps) {
   const { status } = unit;
   const nowPlayingTitle = status.nowPlaying?.title;
@@ -1073,6 +1093,24 @@ function UnitCard({
             </Button>
           </span>
         </Tooltip>
+        {unit.powerConfigured && (
+          <>
+            <Tooltip title="Turn on">
+              <span>
+                <IconButton size="small" color="success" onClick={() => onPower(true)} disabled={powerPending}>
+                  <PowerSettingsNewIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Turn off (sleep)">
+              <span>
+                <IconButton size="small" onClick={() => onPower(false)} disabled={powerPending}>
+                  <BedtimeOutlinedIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </>
+        )}
         <Box sx={{ flexGrow: 1 }} />
         <Button size="small" variant="contained" startIcon={<SettingsIcon />} onClick={onOpen}>
           Manage
@@ -1091,6 +1129,8 @@ function UnitRow({
   onOpen,
   onCommand,
   commandPending,
+  onPower,
+  powerPending,
 }: UnitRowProps) {
   const { status } = unit;
   const online = status.online;
@@ -1188,6 +1228,24 @@ function UnitRow({
             </IconButton>
           </span>
         </Tooltip>
+        {unit.powerConfigured && (
+          <>
+            <Tooltip title="Turn on">
+              <span>
+                <IconButton size="small" color="success" onClick={() => onPower(true)} disabled={powerPending}>
+                  <PowerSettingsNewIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Turn off (sleep)">
+              <span>
+                <IconButton size="small" onClick={() => onPower(false)} disabled={powerPending}>
+                  <BedtimeOutlinedIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </>
+        )}
         <Button
           size="small"
           variant="contained"

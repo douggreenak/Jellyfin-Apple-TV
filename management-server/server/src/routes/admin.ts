@@ -7,8 +7,25 @@ import {
   deleteUnitRow,
   getDefaultsTemplate,
   putDefaultsTemplate,
+  getUnitPower,
+  setUnitPower,
+  hasUnitPower,
+  deleteUnitPower,
+  listSchedules,
+  getSchedule,
+  putSchedule,
+  deleteSchedule,
   type UnitRow,
+  type PowerSchedule,
 } from "../db";
+import {
+  atvAvailable,
+  setAtvPower,
+  scanAtv,
+  beginPairing,
+  finishPairing,
+} from "../atv";
+import { runSchedule } from "../scheduler";
 import { requireAdmin, adminLogin, changeAdminPassword } from "../auth";
 import {
   loginSchema,
@@ -16,6 +33,10 @@ import {
   unitConfigPatchSchema,
   commandSchema,
   renameSchema,
+  unitPowerSchema,
+  scheduleInputSchema,
+  pairBeginSchema,
+  pairFinishSchema,
   jellyfinSchema,
   jellyfinTestSchema,
   jellyfinBrowseSchema,
@@ -123,7 +144,10 @@ adminRouter.post(
 /* -------------------------------- Units --------------------------------- */
 
 adminRouter.get("/units", requireAdmin, (_req: Request, res: Response) => {
-  const units = listUnitRows().map(toUnit);
+  const units = listUnitRows().map((row) => ({
+    ...toUnit(row),
+    powerConfigured: hasUnitPower(row.unitId),
+  }));
   res.json(units);
 });
 
@@ -133,7 +157,7 @@ adminRouter.get("/units/:unitId", requireAdmin, (req: Request, res: Response) =>
     res.status(404).json({ error: "Unit not found" });
     return;
   }
-  res.json(toUnit(row));
+  res.json({ ...toUnit(row), powerConfigured: hasUnitPower(row.unitId) });
 });
 
 /**
@@ -379,7 +403,212 @@ adminRouter.delete(
       res.status(404).json({ error: "Unit not found" });
       return;
     }
+    deleteUnitPower(req.params.unitId); // drop any stored power-control pairing
     res.json({ ok: true });
+  }
+);
+
+/* ----------------------- Remote power (pyatv) ------------------------------ */
+
+/** Is pyatv installed on the server? Drives the dashboard's setup guidance. */
+adminRouter.get("/power/available", requireAdmin, async (_req: Request, res: Response) => {
+  res.json({ available: await atvAvailable() });
+});
+
+/** Discover Apple TVs on the LAN so the operator can pair from the browser. */
+adminRouter.post("/power/scan", requireAdmin, async (_req: Request, res: Response) => {
+  res.json(await scanAtv());
+});
+
+/** Begin in-browser pairing: the chosen Apple TV displays a PIN. */
+adminRouter.post("/power/pair/begin", requireAdmin, async (req: Request, res: Response) => {
+  const parsed = pairBeginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: "Missing Apple TV identifier." });
+    return;
+  }
+  if (!(await atvAvailable())) {
+    res.status(400).json({ ok: false, error: "pyatv is not installed on the management server." });
+    return;
+  }
+  res.json(beginPairing(parsed.data.atvId));
+});
+
+/** Finish pairing with the PIN shown on the TV; store credentials on the unit. */
+adminRouter.post("/power/pair/finish", requireAdmin, async (req: Request, res: Response) => {
+  const parsed = pairFinishSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: "Missing pairing id, unit, or PIN." });
+    return;
+  }
+  const row = getUnitRow(parsed.data.unitId);
+  if (!row) {
+    res.status(404).json({ ok: false, error: "Unit not found" });
+    return;
+  }
+  const result = await finishPairing(parsed.data.pairingId, parsed.data.pin);
+  if (!result.ok || !result.credentials) {
+    res.status(502).json({ ok: false, error: result.error ?? "Pairing failed." });
+    return;
+  }
+  setUnitPower(parsed.data.unitId, {
+    atvId: result.atvId ?? "",
+    credentials: result.credentials,
+  });
+  res.json({ ok: true, atvId: result.atvId ?? "" });
+});
+
+/** Current power-control pairing for a unit (never returns the raw credentials). */
+adminRouter.get(
+  "/units/:unitId/power",
+  requireAdmin,
+  (req: Request, res: Response) => {
+    const row = getUnitRow(req.params.unitId);
+    if (!row) {
+      res.status(404).json({ error: "Unit not found" });
+      return;
+    }
+    const power = getUnitPower(req.params.unitId);
+    res.json({ configured: !!power, atvId: power?.atvId ?? null });
+  }
+);
+
+/** Save the Apple TV identifier + Companion credentials for a unit. */
+adminRouter.put(
+  "/units/:unitId/power",
+  requireAdmin,
+  (req: Request, res: Response) => {
+    const parsed = unitPowerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res
+        .status(400)
+        .json({ error: "Provide the Apple TV identifier and Companion credentials." });
+      return;
+    }
+    const row = getUnitRow(req.params.unitId);
+    if (!row) {
+      res.status(404).json({ error: "Unit not found" });
+      return;
+    }
+    setUnitPower(req.params.unitId, parsed.data);
+    res.json({ configured: true, atvId: parsed.data.atvId });
+  }
+);
+
+/** Remove a unit's power-control pairing. */
+adminRouter.delete(
+  "/units/:unitId/power",
+  requireAdmin,
+  (req: Request, res: Response) => {
+    deleteUnitPower(req.params.unitId);
+    res.json({ ok: true });
+  }
+);
+
+/** Wake (on) or sleep (off) a paired Apple TV via pyatv. */
+adminRouter.post(
+  "/units/:unitId/power/:action",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const { action } = req.params;
+    if (action !== "on" && action !== "off") {
+      res.status(400).json({ ok: false, error: "Action must be 'on' or 'off'." });
+      return;
+    }
+    const row = getUnitRow(req.params.unitId);
+    if (!row) {
+      res.status(404).json({ ok: false, error: "Unit not found" });
+      return;
+    }
+    const power = getUnitPower(req.params.unitId);
+    if (!power) {
+      res
+        .status(400)
+        .json({ ok: false, error: "This unit isn't paired for power control yet." });
+      return;
+    }
+    const result = await setAtvPower(power.atvId, power.credentials, action === "on");
+    if (!result.ok) {
+      res.status(502).json({ ok: false, error: result.error });
+      return;
+    }
+    res.json({ ok: true });
+  }
+);
+
+/* --------------------------- Power schedules ------------------------------ */
+
+adminRouter.get("/schedules", requireAdmin, (_req: Request, res: Response) => {
+  res.json(listSchedules());
+});
+
+adminRouter.post("/schedules", requireAdmin, (req: Request, res: Response) => {
+  const parsed = scheduleInputSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid schedule", details: parsed.error.format() });
+    return;
+  }
+  const schedule: PowerSchedule = {
+    id: newId(),
+    name: parsed.data.name,
+    enabled: parsed.data.enabled,
+    action: parsed.data.action,
+    targetType: parsed.data.targetType,
+    targetValue: parsed.data.targetValue,
+    time: parsed.data.time,
+    days: parsed.data.days,
+    lastRun: null,
+    lastResult: null,
+  };
+  putSchedule(schedule);
+  res.status(201).json(schedule);
+});
+
+adminRouter.put("/schedules/:id", requireAdmin, (req: Request, res: Response) => {
+  const existing = getSchedule(req.params.id);
+  if (!existing) {
+    res.status(404).json({ error: "Schedule not found" });
+    return;
+  }
+  const parsed = scheduleInputSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid schedule", details: parsed.error.format() });
+    return;
+  }
+  const updated: PowerSchedule = {
+    ...existing,
+    name: parsed.data.name,
+    enabled: parsed.data.enabled,
+    action: parsed.data.action,
+    targetType: parsed.data.targetType,
+    targetValue: parsed.data.targetValue,
+    time: parsed.data.time,
+    days: parsed.data.days,
+  };
+  putSchedule(updated);
+  res.json(updated);
+});
+
+adminRouter.delete("/schedules/:id", requireAdmin, (req: Request, res: Response) => {
+  if (!deleteSchedule(req.params.id)) {
+    res.status(404).json({ error: "Schedule not found" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+/** Run a schedule immediately (test button). */
+adminRouter.post(
+  "/schedules/:id/run",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const schedule = getSchedule(req.params.id);
+    if (!schedule) {
+      res.status(404).json({ ok: false, error: "Schedule not found" });
+      return;
+    }
+    const result = await runSchedule(schedule);
+    res.json({ ok: true, result });
   }
 );
 

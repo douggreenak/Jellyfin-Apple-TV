@@ -4,6 +4,7 @@ import helmet from "helmet";
 import cors from "cors";
 import { initDb } from "./db";
 import { initAuth } from "./auth";
+import { startScheduler } from "./scheduler";
 import { setOnlineWindowSeconds } from "./util";
 import { devicesRouter } from "./routes/devices";
 import { adminRouter } from "./routes/admin";
@@ -34,6 +35,7 @@ const ADMIN_DIST = process.env.ADMIN_DIST ?? path.resolve(__dirname, "../../admi
 initDb(DB_PATH);
 initAuth({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD, jwtSecret: JWT_SECRET });
 setOnlineWindowSeconds(ONLINE_WINDOW_SECONDS);
+startScheduler(); // fires power on/off schedules (pyatv)
 
 // ----- Build app -----
 const app = express();

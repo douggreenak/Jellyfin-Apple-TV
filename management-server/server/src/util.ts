@@ -56,6 +56,8 @@ export interface UnitApi {
   pendingCommand: PendingCommand | null;
   registeredAt: string;
   adopted: boolean;
+  /** Whether this unit is paired for remote power control (set by admin routes). */
+  powerConfigured?: boolean;
 }
 
 let onlineWindowSeconds = 90;

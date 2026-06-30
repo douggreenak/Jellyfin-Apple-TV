@@ -20,6 +20,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import DevicesOtherIcon from '@mui/icons-material/DevicesOther';
 import InsightsIcon from '@mui/icons-material/Insights';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import TuneIcon from '@mui/icons-material/Tune';
 import MenuIcon from '@mui/icons-material/Menu';
 import LogoutIcon from '@mui/icons-material/Logout';
@@ -42,6 +43,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Units', to: '/', icon: <DevicesOtherIcon /> },
   { label: 'Data', to: '/data', icon: <InsightsIcon /> },
+  { label: 'Schedule', to: '/schedule', icon: <ScheduleIcon /> },
   { label: 'Defaults', to: '/defaults', icon: <TuneIcon /> },
 ];
 

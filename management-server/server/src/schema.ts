@@ -167,6 +167,42 @@ export const changePasswordSchema = z
   })
   .strict();
 
+/** Per-unit Apple TV power-control pairing (server-only; for pyatv). */
+export const unitPowerSchema = z
+  .object({
+    atvId: z.string().min(1),
+    credentials: z.string().min(1),
+  })
+  .strict();
+
+/** A scheduled power on/off action (server assigns id/lastRun/lastResult). */
+export const scheduleInputSchema = z
+  .object({
+    name: z.string().max(80).optional().default(""),
+    enabled: z.boolean().optional().default(true),
+    action: z.enum(["on", "off"]),
+    targetType: z.enum(["all", "group", "unit"]),
+    targetValue: z.string().nullable().optional().default(null),
+    time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "time must be HH:MM (24h)"),
+    days: z.array(z.number().int().min(0).max(6)).min(1, "pick at least one day"),
+  })
+  .strict()
+  .refine((s) => s.targetType === "all" || !!s.targetValue, {
+    message: "targetValue is required for group/unit targets",
+  });
+
+/** Start an in-browser pairing session for a discovered Apple TV. */
+export const pairBeginSchema = z.object({ atvId: z.string().min(1) }).strict();
+
+/** Complete a pairing session with the PIN shown on the TV; stores creds on the unit. */
+export const pairFinishSchema = z
+  .object({
+    unitId: z.string().min(1),
+    pairingId: z.string().min(1),
+    pin: z.string().min(1),
+  })
+  .strict();
+
 export const jellyfinTestSchema = z
   .object({
     serverUrl: z.string().min(1),

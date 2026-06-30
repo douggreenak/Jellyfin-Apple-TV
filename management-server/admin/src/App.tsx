@@ -6,6 +6,7 @@ import UnitsDashboard from './pages/UnitsDashboard';
 import UnitDetail from './pages/UnitDetail';
 import Defaults from './pages/Defaults';
 import Data from './pages/Data';
+import Schedule from './pages/Schedule';
 
 export default function App() {
   return (
@@ -39,6 +40,16 @@ export default function App() {
             <RequireAuth>
               <AppShell>
                 <Data />
+              </AppShell>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/schedule"
+          element={
+            <RequireAuth>
+              <AppShell>
+                <Schedule />
               </AppShell>
             </RequireAuth>
           }

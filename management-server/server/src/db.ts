@@ -49,6 +49,11 @@ export function initDb(dbPath: string): Database.Database {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS schedules (
+      id   TEXT PRIMARY KEY,
+      data TEXT NOT NULL
+    );
   `);
 
   // Migrate older databases that predate the `adopted` column.
@@ -207,4 +212,78 @@ export function putSetting(key: string, value: string): void {
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`
     )
     .run(key, value);
+}
+
+/* --------------------- Per-unit Apple TV power control --------------------- */
+
+/**
+ * Server-only operational data (NOT part of the device-facing UnitConfig): the
+ * Apple TV's network identifier + pyatv Companion credentials, used to wake/sleep
+ * the TV from the dashboard. Stored in the settings KV under `atvpower:<unitId>`.
+ */
+export interface UnitPower {
+  atvId: string;
+  credentials: string;
+}
+
+const POWER_PREFIX = "atvpower:";
+
+export function getUnitPower(unitId: string): UnitPower | undefined {
+  const v = getSetting(POWER_PREFIX + unitId);
+  return v ? (JSON.parse(v) as UnitPower) : undefined;
+}
+
+export function setUnitPower(unitId: string, power: UnitPower): void {
+  putSetting(POWER_PREFIX + unitId, JSON.stringify(power));
+}
+
+export function hasUnitPower(unitId: string): boolean {
+  return getSetting(POWER_PREFIX + unitId) !== undefined;
+}
+
+export function deleteUnitPower(unitId: string): void {
+  getDb().prepare("DELETE FROM settings WHERE key = ?").run(POWER_PREFIX + unitId);
+}
+
+/* ----------------------- Power schedules (automation) ---------------------- */
+
+/** A scheduled power action against all units, a group, or one unit. */
+export interface PowerSchedule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  action: "on" | "off";
+  targetType: "all" | "group" | "unit";
+  targetValue: string | null; // group name or unitId; null when targetType="all"
+  time: string; // "HH:MM", 24h, server local time
+  days: number[]; // 0=Sun … 6=Sat
+  lastRun: string | null; // ISO
+  lastResult: string | null;
+}
+
+export function listSchedules(): PowerSchedule[] {
+  const rows = getDb().prepare("SELECT data FROM schedules").all() as { data: string }[];
+  return rows
+    .map((r) => JSON.parse(r.data) as PowerSchedule)
+    .sort((a, b) => a.time.localeCompare(b.time));
+}
+
+export function getSchedule(id: string): PowerSchedule | undefined {
+  const row = getDb().prepare("SELECT data FROM schedules WHERE id = ?").get(id) as
+    | { data: string }
+    | undefined;
+  return row ? (JSON.parse(row.data) as PowerSchedule) : undefined;
+}
+
+export function putSchedule(schedule: PowerSchedule): void {
+  getDb()
+    .prepare(
+      `INSERT INTO schedules (id, data) VALUES (?, ?)
+       ON CONFLICT(id) DO UPDATE SET data = excluded.data`
+    )
+    .run(schedule.id, JSON.stringify(schedule));
+}
+
+export function deleteSchedule(id: string): boolean {
+  return getDb().prepare("DELETE FROM schedules WHERE id = ?").run(id).changes > 0;
 }

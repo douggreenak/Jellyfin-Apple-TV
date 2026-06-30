@@ -102,12 +102,37 @@ export interface Unit {
   pendingCommand: PendingCommand | null;
   registeredAt: string;
   adopted: boolean;
+  /** Whether this unit is paired for remote power control (pyatv). */
+  powerConfigured?: boolean;
 }
 
 export interface JellyfinLibrary {
   id: string;
   name: string;
 }
+
+/** A discoverable Apple TV (from a network scan) for power-control pairing. */
+export interface AtvDevice {
+  identifier: string;
+  name: string;
+  address: string;
+}
+
+/** A scheduled power on/off action. */
+export interface PowerSchedule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  action: 'on' | 'off';
+  targetType: 'all' | 'group' | 'unit';
+  targetValue: string | null;
+  time: string; // "HH:MM"
+  days: number[]; // 0=Sun … 6=Sat
+  lastRun: string | null;
+  lastResult: string | null;
+}
+
+export type ScheduleInput = Omit<PowerSchedule, 'id' | 'lastRun' | 'lastResult'>;
 
 /** A node in the Jellyfin tree (library or sub-folder) for the lock picker. */
 export interface JellyfinBrowseItem {
@@ -418,6 +443,80 @@ export const api = {
       '/admin/units/push-jellyfin',
       { method: 'POST', body: creds },
     );
+  },
+
+  // Remote Apple TV power control (pyatv). Wake/sleep + per-unit pairing.
+  powerAvailable(): Promise<{ available: boolean }> {
+    return request<{ available: boolean }>('/admin/power/available');
+  },
+
+  getUnitPower(id: string): Promise<{ configured: boolean; atvId: string | null }> {
+    return request(`/admin/units/${encodeURIComponent(id)}/power`);
+  },
+
+  // In-browser pairing: scan the LAN, begin (TV shows a PIN), finish with the PIN.
+  scanAppleTVs(): Promise<{ ok: boolean; devices?: AtvDevice[]; error?: string }> {
+    return request('/admin/power/scan', { method: 'POST' });
+  },
+
+  pairBegin(atvId: string): Promise<{ ok: boolean; pairingId?: string; error?: string }> {
+    return request('/admin/power/pair/begin', { method: 'POST', body: { atvId } });
+  },
+
+  pairFinish(
+    unitId: string,
+    pairingId: string,
+    pin: string,
+  ): Promise<{ ok: boolean; atvId?: string; error?: string }> {
+    return request('/admin/power/pair/finish', {
+      method: 'POST',
+      body: { unitId, pairingId, pin },
+    });
+  },
+
+  setUnitPower(
+    id: string,
+    atvId: string,
+    credentials: string,
+  ): Promise<{ configured: boolean; atvId: string }> {
+    return request(`/admin/units/${encodeURIComponent(id)}/power`, {
+      method: 'PUT',
+      body: { atvId, credentials },
+    });
+  },
+
+  clearUnitPower(id: string): Promise<{ ok: boolean }> {
+    return request(`/admin/units/${encodeURIComponent(id)}/power`, { method: 'DELETE' });
+  },
+
+  setPower(id: string, on: boolean): Promise<{ ok: boolean }> {
+    return request(`/admin/units/${encodeURIComponent(id)}/power/${on ? 'on' : 'off'}`, {
+      method: 'POST',
+    });
+  },
+
+  // Power schedules (automated wake/sleep).
+  listSchedules(): Promise<PowerSchedule[]> {
+    return request<PowerSchedule[]>('/admin/schedules');
+  },
+
+  createSchedule(input: ScheduleInput): Promise<PowerSchedule> {
+    return request<PowerSchedule>('/admin/schedules', { method: 'POST', body: input });
+  },
+
+  updateSchedule(id: string, input: ScheduleInput): Promise<PowerSchedule> {
+    return request<PowerSchedule>(`/admin/schedules/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: input,
+    });
+  },
+
+  deleteSchedule(id: string): Promise<{ ok: boolean }> {
+    return request(`/admin/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  runSchedule(id: string): Promise<{ ok: boolean; result: string }> {
+    return request(`/admin/schedules/${encodeURIComponent(id)}/run`, { method: 'POST' });
   },
 
   // Backup & restore — full server configuration (defaults + all units).
