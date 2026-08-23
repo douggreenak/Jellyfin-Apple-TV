@@ -24,6 +24,9 @@ struct RootView: View {
                     .transition(.opacity)
             }
         }
+        // Invisible: just hands the app's UIWindow to screenCapture so the
+        // dashboard's live screen mirror has something to snapshot.
+        .background(WindowAccessor { model.screenCapture.window = $0 })
         .environment(\.theme, model.theme)
         .preferredColorScheme(model.theme.preferredColorScheme)
         .animation(.smooth, value: model.phase)

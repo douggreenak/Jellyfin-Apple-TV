@@ -14,6 +14,7 @@
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import type { RemoteKey } from "./schema";
 
 const ATV_BIN = process.env.ATVREMOTE_BIN ?? "atvremote";
 const ATVSCRIPT_BIN = process.env.ATVSCRIPT_BIN ?? "atvscript";
@@ -78,6 +79,36 @@ export async function setAtvPower(
   if (!r.ok) {
     const last = (r.stderr || r.stdout || "").trim().split("\n").filter(Boolean).pop();
     return { ok: false, error: last || "Power command failed (could not reach the Apple TV)." };
+  }
+  return { ok: true };
+}
+
+/**
+ * Send a single remote-control key press to a paired Apple TV over the same
+ * Companion protocol/credentials used for power control. This is indistinguishable
+ * from a physical Siri Remote press to the TV, so it drives whatever app is in the
+ * foreground (normally Jellyfin) via the system's own focus engine — no app-side
+ * support needed. Each call opens a fresh Companion connection (like power on/off),
+ * so expect roughly a 1-2s round trip per press.
+ */
+export async function sendAtvCommand(
+  atvId: string,
+  credentials: string,
+  key: RemoteKey
+): Promise<PowerResult> {
+  if (!atvId || !credentials) {
+    return { ok: false, error: "This unit isn't paired for remote control yet." };
+  }
+  const r = await run(["--id", atvId, "--companion-credentials", credentials, key]);
+  if (r.notFound) {
+    return {
+      ok: false,
+      error: "pyatv (atvremote) is not installed on the management server.",
+    };
+  }
+  if (!r.ok) {
+    const last = (r.stderr || r.stdout || "").trim().split("\n").filter(Boolean).pop();
+    return { ok: false, error: last || "Remote command failed (could not reach the Apple TV)." };
   }
   return { ok: true };
 }

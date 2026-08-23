@@ -175,6 +175,25 @@ export const unitPowerSchema = z
   })
   .strict();
 
+/**
+ * A virtual remote-control key sent to a paired Apple TV over pyatv's Companion
+ * protocol — the same pairing used for power control. `top_menu` is the TV's Home
+ * screen (leaves the Jellyfin app); everything else drives the app's own focus
+ * engine exactly as a physical Siri Remote press would.
+ */
+export const remoteKeySchema = z.enum([
+  "up",
+  "down",
+  "left",
+  "right",
+  "select",
+  "menu",
+  "play_pause",
+  "top_menu",
+]);
+
+export type RemoteKey = z.infer<typeof remoteKeySchema>;
+
 /** A scheduled power on/off action (server assigns id/lastRun/lastResult). */
 export const scheduleInputSchema = z
   .object({

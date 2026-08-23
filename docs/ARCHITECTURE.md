@@ -79,6 +79,8 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `GET /devices/:unitId/config` | — | `UnitConfig` | Device fetches its config. Supports `ETag`/`If-None-Match` → `304`. |
 | `POST /devices/:unitId/heartbeat` | `{ ipAddress, nowPlaying, lastError }` | `{ ok, configVersion, command }` | Every ~30 s. Updates `lastSeenAt`; returns current `configVersion` (device re-fetches config if it changed) and any pending `command`. |
 | `POST /devices/:unitId/ack` | `{ commandId }` | `{ ok }` | Device acknowledges a command it executed. |
+| `GET /devices/:unitId/live` | — | `{ screenShare }` | Cheap poll (every few seconds) telling the device whether a dashboard operator has its screen mirror open right now. |
+| `POST /devices/:unitId/screenshot` | raw `image/jpeg` (not JSON) | `{ ok }` | Uploads one captured screen frame while `screenShare` is true. In-memory only on the server — only the latest frame per unit is kept. |
 
 ### Admin endpoints (Bearer JWT)
 | Method & path | Body | Returns |
@@ -93,6 +95,9 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `POST /admin/units/:unitId/adopt` | — | `Unit` (applies the current defaults template, bumps `configVersion`, marks `adopted`) |
 | `POST /admin/units/:unitId/unadopt` | — | `Unit` (returns the unit to "ready to adopt") |
 | `DELETE /admin/units/:unitId` | — | `{ ok }` |
+| `POST /admin/units/:unitId/remote/:action` | — (`:action` is one of `up\|down\|left\|right\|select\|menu\|play_pause\|top_menu`) | `{ ok, error? }` |
+| `POST /admin/units/:unitId/screen/keepalive` | — | `{ ok }` (call every ~700 ms while the screen panel is open) |
+| `GET  /admin/units/:unitId/screenshot` | — | latest `image/jpeg` frame, or `204` if none yet |
 | `GET  /admin/defaults` | — | `UnitConfig` template (new units inherit this) |
 | `PUT  /admin/defaults` | `UnitConfig` template | updated template |
 | `POST /admin/jellyfin/test` | `{ serverUrl, username, password }` | `{ ok, serverName, version, libraries: [{id,name}] }` |

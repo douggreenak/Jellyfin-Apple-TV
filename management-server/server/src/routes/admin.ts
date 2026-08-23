@@ -21,6 +21,7 @@ import {
 import {
   atvAvailable,
   setAtvPower,
+  sendAtvCommand,
   scanAtv,
   beginPairing,
   finishPairing,
@@ -34,6 +35,7 @@ import {
   commandSchema,
   renameSchema,
   unitPowerSchema,
+  remoteKeySchema,
   scheduleInputSchema,
   pairBeginSchema,
   pairFinishSchema,
@@ -47,6 +49,7 @@ import {
 } from "../schema";
 import type { UnitConfig } from "../schema";
 import { testJellyfin, browseJellyfin, resolveJellyfinItem } from "../jellyfin";
+import { keepAlive, getFrame } from "../liveScreen";
 import {
   toUnit,
   deepMerge,
@@ -533,6 +536,79 @@ adminRouter.post(
       return;
     }
     res.json({ ok: true });
+  }
+);
+
+/* ------------------------- Remote control + screen mirror ------------------ */
+
+/**
+ * Send one virtual remote-control key press to a paired Apple TV (same pairing
+ * as power control — pyatv's Companion protocol). Reaches the TV OS directly, so
+ * it drives whatever app is in the foreground exactly as a physical Siri Remote
+ * press would; no round trip through the device's own management-client loop.
+ */
+adminRouter.post(
+  "/units/:unitId/remote/:action",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const parsedAction = remoteKeySchema.safeParse(req.params.action);
+    if (!parsedAction.success) {
+      res.status(400).json({ ok: false, error: "Unknown remote-control action." });
+      return;
+    }
+    const row = getUnitRow(req.params.unitId);
+    if (!row) {
+      res.status(404).json({ ok: false, error: "Unit not found" });
+      return;
+    }
+    const power = getUnitPower(req.params.unitId);
+    if (!power) {
+      res
+        .status(400)
+        .json({ ok: false, error: "This unit isn't paired for remote control yet." });
+      return;
+    }
+    const result = await sendAtvCommand(power.atvId, power.credentials, parsedAction.data);
+    if (!result.ok) {
+      res.status(502).json({ ok: false, error: result.error });
+      return;
+    }
+    res.json({ ok: true });
+  }
+);
+
+/**
+ * POST /units/:unitId/screen/keepalive
+ * The dashboard calls this every ~700ms while its Remote & Screen panel is open,
+ * telling the unit's device to keep capturing/uploading screenshots. Stopping the
+ * calls (panel closed) lets the device's live session lapse within ~10s.
+ */
+adminRouter.post(
+  "/units/:unitId/screen/keepalive",
+  requireAdmin,
+  (req: Request, res: Response) => {
+    const row = getUnitRow(req.params.unitId);
+    if (!row) {
+      res.status(404).json({ ok: false, error: "Unit not found" });
+      return;
+    }
+    keepAlive(req.params.unitId);
+    res.json({ ok: true });
+  }
+);
+
+/** GET /units/:unitId/screenshot — the most recently uploaded screen capture, if any. */
+adminRouter.get(
+  "/units/:unitId/screenshot",
+  requireAdmin,
+  (req: Request, res: Response) => {
+    const frame = getFrame(req.params.unitId);
+    if (!frame) {
+      res.status(204).end();
+      return;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.type(frame.mime).send(frame.buf);
   }
 );
 

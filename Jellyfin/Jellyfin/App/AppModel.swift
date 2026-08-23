@@ -45,7 +45,11 @@ final class AppModel {
 
     let identity: DeviceIdentity
     let management: ManagementClient
+    /// Captures this unit's own screen for the dashboard's live mirror. `window`
+    /// is populated by `WindowAccessor` once SwiftUI hands us a real UIWindow.
+    let screenCapture = ScreenCaptureService()
     private var loopTask: Task<Void, Never>?
+    private var liveLoopTask: Task<Void, Never>?
     private var nowPlayingBeatTask: Task<Void, Never>?
     private var heartbeatFailures = 0
 
@@ -60,6 +64,13 @@ final class AppModel {
     private let heartbeatInterval: Duration = .seconds(30)
     private let retryInterval: Duration = .seconds(8)
     private let failuresBeforeBlock = 3
+
+    /// How often to check whether a dashboard operator has this unit's screen
+    /// mirror open, while idle (not currently live).
+    private let livePollInterval: Duration = .seconds(3)
+    /// How often to capture + upload a frame while the mirror IS open — targets
+    /// roughly 1-2 frames/sec, a fast-refreshing snapshot rather than smooth video.
+    private let liveCaptureInterval: Duration = .seconds(0.7)
 
     var theme: Theme { Theme(appearance: config.appearance) }
 
@@ -76,6 +87,7 @@ final class AppModel {
     func start() async {
         await refreshFromServer(initial: true)
         startLoop()
+        startLiveLoop()
     }
 
     func retry() {
@@ -233,6 +245,28 @@ final class AppModel {
             await refreshFromServer(initial: false)
         case .launching, .registering, .connectingJellyfin:
             break // an attempt is already in flight
+        }
+    }
+
+    /// Independent of the 30s heartbeat loop: a cheap, frequent poll asking
+    /// whether a dashboard operator currently has this unit's screen mirror open.
+    /// While it does, this captures and uploads a frame roughly every 0.7s;
+    /// otherwise it just checks back every few seconds. Never runs outside
+    /// `.ready`/`.waitingForContent` (nothing meaningful to show while blocked).
+    private func startLiveLoop() {
+        liveLoopTask?.cancel()
+        liveLoopTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let ready = self.phase == .ready || self.phase == .waitingForContent
+                let live = ready ? ((try? await self.management.fetchLiveStatus()) ?? false) : false
+                if live, let frame = self.screenCapture.captureJPEG() {
+                    try? await self.management.uploadScreenshot(frame)
+                    try? await Task.sleep(for: self.liveCaptureInterval)
+                } else {
+                    try? await Task.sleep(for: self.livePollInterval)
+                }
+            }
         }
     }
 

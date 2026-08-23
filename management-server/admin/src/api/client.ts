@@ -14,6 +14,19 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 export type PosterStyle = 'poster' | 'thumb' | 'wide';
 export type CommandType = 'reload' | 'identify' | 'restart';
 
+// A single virtual remote-control key press, sent straight to a paired Apple TV
+// over pyatv's Companion protocol (same pairing as remote power). `top_menu` is
+// the TV's Home screen — it exits the Jellyfin app.
+export type RemoteKey =
+  | 'up'
+  | 'down'
+  | 'left'
+  | 'right'
+  | 'select'
+  | 'menu'
+  | 'play_pause'
+  | 'top_menu';
+
 // Fleet-wide bulk operations applied to many units at once.
 // `migrate` re-points devices at a new management server URL (passed via `data`).
 export type BulkAction =
@@ -493,6 +506,46 @@ export const api = {
     return request(`/admin/units/${encodeURIComponent(id)}/power/${on ? 'on' : 'off'}`, {
       method: 'POST',
     });
+  },
+
+  // Remote control + screen mirror — reuses the same pyatv pairing as power.
+  sendRemote(id: string, action: RemoteKey): Promise<{ ok: boolean; error?: string }> {
+    return request(`/admin/units/${encodeURIComponent(id)}/remote/${action}`, {
+      method: 'POST',
+    });
+  },
+
+  // Tells the device to keep capturing/uploading its screen for a few more
+  // seconds. Call this on an interval while the screen panel is open; stop
+  // calling it and the device's live session lapses on its own within ~10s.
+  screenKeepalive(id: string): Promise<{ ok: boolean }> {
+    return request(`/admin/units/${encodeURIComponent(id)}/screen/keepalive`, {
+      method: 'POST',
+    });
+  },
+
+  // Fetches the latest screenshot as a Blob (auth header can't ride on a plain
+  // <img src>, so this is a manual fetch rather than going through request()).
+  // Returns null if nothing has been captured yet (204).
+  async fetchScreenshotBlob(id: string): Promise<Blob | null> {
+    const token = getToken();
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/admin/units/${encodeURIComponent(id)}/screenshot`, {
+        headers,
+      });
+    } catch {
+      throw new ApiError(0, 'Network error — is the management server running?');
+    }
+    if (res.status === 401) {
+      setToken(null);
+      unauthorizedListeners.forEach((fn) => fn());
+      throw new ApiError(401, 'Your session has expired. Please sign in again.');
+    }
+    if (res.status === 204) return null;
+    if (!res.ok) throw new ApiError(res.status, `Request failed (${res.status})`);
+    return res.blob();
   },
 
   // Power schedules (automated wake/sleep).

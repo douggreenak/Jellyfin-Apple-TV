@@ -35,6 +35,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import TabPanel from '../components/TabPanel';
 import SaveBar from '../components/SaveBar';
 import PowerPanel from '../components/PowerPanel';
+import RemoteScreenPanel from '../components/RemoteScreenPanel';
 import JellyfinPanel from '../components/config/JellyfinPanel';
 import AppearancePanel from '../components/config/AppearancePanel';
 import BrowsePanel from '../components/config/BrowsePanel';
@@ -213,6 +214,7 @@ export default function UnitDetail() {
           <Tab label="Appearance" />
           <Tab label="Browse" />
           <Tab label="Playback" />
+          <Tab label="Remote & Screen" />
         </Tabs>
 
         <CardContent sx={{ px: { xs: 2, md: 3 } }}>
@@ -264,6 +266,11 @@ export default function UnitDetail() {
               value={draft.playback}
               onChange={(playback) => setDraft({ ...draft, playback })}
             />
+          </TabPanel>
+
+          {/* Remote & Screen */}
+          <TabPanel value={tab} index={5}>
+            <RemoteScreenPanel unitId={id} />
           </TabPanel>
         </CardContent>
       </Card>

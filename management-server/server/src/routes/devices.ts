@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import express from "express";
 import {
   getUnitRow,
   insertUnitRow,
@@ -23,6 +24,7 @@ import {
   type UnitStatus,
   type PendingCommand,
 } from "../util";
+import { isLive, storeFrame } from "../liveScreen";
 
 export const devicesRouter = Router();
 
@@ -241,6 +243,48 @@ devicesRouter.post(
     if (pending && pending.id === parsed.data.commandId) {
       updateUnitRow({ ...row, pendingCommand: null });
     }
+    res.json({ ok: true });
+  }
+);
+
+/**
+ * GET /devices/:unitId/live
+ * Cheap, frequent poll (every few seconds) telling the device whether a dashboard
+ * operator currently has this unit's screen mirror open. Only while true should
+ * the device incur the cost of capturing and uploading screenshots.
+ */
+devicesRouter.get(
+  "/:unitId/live",
+  requireDevice,
+  (req: Request, res: Response) => {
+    if (req.unitId !== req.params.unitId) {
+      res.status(403).json({ error: "Token does not match unitId" });
+      return;
+    }
+    res.json({ screenShare: isLive(req.params.unitId) });
+  }
+);
+
+/**
+ * POST /devices/:unitId/screenshot
+ * Raw JPEG body (not JSON) — a captured frame of the device's own screen, kept
+ * in memory only and overwriting any previous frame. Body parser is scoped to
+ * this route alone so the global 1mb JSON limit is untouched.
+ */
+devicesRouter.post(
+  "/:unitId/screenshot",
+  requireDevice,
+  express.raw({ type: "image/jpeg", limit: "1mb" }),
+  (req: Request, res: Response) => {
+    if (req.unitId !== req.params.unitId) {
+      res.status(403).json({ error: "Token does not match unitId" });
+      return;
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      res.status(400).json({ error: "Expected a non-empty image/jpeg body" });
+      return;
+    }
+    storeFrame(req.params.unitId, req.body, "image/jpeg");
     res.json({ ok: true });
   }
 );

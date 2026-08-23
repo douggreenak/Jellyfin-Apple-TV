@@ -104,7 +104,7 @@ final class ManagementClient {
         return URL(string: base + "/api/v1")
     }
 
-    private func request(_ path: String, method: String = "GET", body: Data? = nil, authed: Bool = true) -> URLRequest? {
+    private func request(_ path: String, method: String = "GET", body: Data? = nil, contentType: String = "application/json", authed: Bool = true) -> URLRequest? {
         guard let base = apiBase else { return nil }
         var request = URLRequest(url: base.appendingPathComponent(path))
         request.httpMethod = method
@@ -117,7 +117,7 @@ final class ManagementClient {
         }
         if let body {
             request.httpBody = body
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         }
         return request
     }
@@ -184,5 +184,26 @@ final class ManagementClient {
             throw ManagementError.badURL
         }
         _ = try await send(request, as: AckResponse.self)
+    }
+
+    /// Cheap, frequent poll: does a dashboard operator currently have this unit's
+    /// screen mirror open? Only while true should the caller incur the cost of
+    /// capturing and uploading screenshots.
+    func fetchLiveStatus() async throws -> Bool {
+        struct LiveStatusResponse: Decodable { let screenShare: Bool }
+        guard let request = request("devices/\(identity.unitId)/live") else {
+            throw ManagementError.badURL
+        }
+        return try await send(request, as: LiveStatusResponse.self).screenShare
+    }
+
+    /// Uploads one captured screen frame (raw JPEG, not JSON) to be shown in the
+    /// dashboard's live screen mirror. Only the most recent upload is kept server-side.
+    func uploadScreenshot(_ data: Data) async throws {
+        struct UploadResponse: Decodable { let ok: Bool }
+        guard let request = request("devices/\(identity.unitId)/screenshot", method: "POST", body: data, contentType: "image/jpeg") else {
+            throw ManagementError.badURL
+        }
+        _ = try await send(request, as: UploadResponse.self)
     }
 }
