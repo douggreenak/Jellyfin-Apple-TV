@@ -68,6 +68,12 @@ Apple devices have **no MPEG‑2 decoder** and limited codec support; much real�
 with `videoCodec=h264,hevc`), which direct‑streams compatible codecs and transcodes the rest.
 Do **not** use static direct‑play (`stream?static=true`) — it silently fails on MPEG‑2.
 
+**Always force SDR / 8‑bit** too (`videoRangeType=SDR&maxVideoBitDepth=8`): an HDR10/Dolby Vision
+source (common in 4K rips) is otherwise direct‑streamed as 10‑bit HEVC — still an "allowed" codec —
+and tvOS silently refuses to render that video layer. Symptom: audio plays fine, the transport
+scrub bar keeps advancing, picture is just black. Not a DRM/licensing issue — this content carries
+no DRM — it's tvOS's own output‑protection policy for wide‑gamut video.
+
 ## Server ↔ device contract
 - Device endpoints: `register`, `GET/PUT config`, `heartbeat`, `ack`. Admin endpoints under
   `/admin`. Heartbeat (~30s) returns `{ok, configVersion, command}`; the device applies config

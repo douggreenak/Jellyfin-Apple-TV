@@ -200,6 +200,17 @@ final class JellyfinClient {
     /// removed because Apple devices have no MPEG-2 decoder, so it silently failed
     /// on such content.) A bitrate cap, or `preferDirectPlay == false`, bounds the
     /// streaming bitrate.
+    ///
+    /// Forces 8-bit SDR output (`videoRangeType=SDR`, `maxVideoBitDepth=8`):
+    /// without this, an HDR10/Dolby Vision source (common in 4K rips) gets
+    /// direct-streamed as 10-bit HEVC since `hevc` is an allowed codec, and tvOS
+    /// will silently refuse to render that video layer — audio keeps playing and
+    /// the transport scrub bar keeps advancing, but the picture is just black.
+    /// (Not a DRM/copyright issue — Jellyfin content here carries no DRM; this is
+    /// tvOS's own output-protection policy for wide-gamut/HDR video, independent
+    /// of licensing.) Forcing SDR makes Jellyfin tone-map any HDR source down to
+    /// 8-bit during transcode, trading peak brightness/color range for actually
+    /// having a picture.
     func playbackURL(for item: BaseItem, playback: UnitConfig.Playback) -> URL? {
         guard let token = accessToken else { return nil }
         var components = URLComponents(
@@ -213,7 +224,9 @@ final class JellyfinClient {
             URLQueryItem(name: "videoCodec", value: "h264,hevc"),
             URLQueryItem(name: "audioCodec", value: "aac,ac3,eac3,mp3"),
             URLQueryItem(name: "transcodingContainer", value: "ts"),
-            URLQueryItem(name: "transcodingProtocol", value: "hls")
+            URLQueryItem(name: "transcodingProtocol", value: "hls"),
+            URLQueryItem(name: "videoRangeType", value: "SDR"),
+            URLQueryItem(name: "maxVideoBitDepth", value: "8")
         ]
         if playback.maxBitrateMbps > 0 {
             query.append(URLQueryItem(name: "maxStreamingBitrate", value: String(Int(playback.maxBitrateMbps * 1_000_000))))
