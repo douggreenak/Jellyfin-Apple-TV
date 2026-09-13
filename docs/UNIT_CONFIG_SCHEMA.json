@@ -41,7 +41,7 @@
         "accentColorHex": { "type": "string", "pattern": "^#([0-9a-fA-F]{6})$", "default": "#5E5CE6" },
         "showClock": { "type": "boolean", "default": true },
         "showItemTitles": { "type": "boolean", "default": true },
-        "posterStyle": { "type": "string", "enum": ["poster", "thumb", "wide"], "default": "poster" }
+        "posterStyle": { "type": "string", "enum": ["poster", "thumb", "wide"], "default": "wide" }
       }
     },
     "playback": {
@@ -98,7 +98,8 @@
           "required": ["id", "type"],
           "properties": {
             "id": { "type": "string" },
-            "type": { "type": "string", "enum": ["reload", "identify", "restart"] },
+            "type": { "type": "string", "enum": ["reload", "identify", "restart", "migrate"] },
+            "data": { "type": ["string", "null"], "description": "For \"migrate\": the new management server base URL the device should switch to." },
             "issuedAt": { "type": "string", "format": "date-time" }
           }
         },

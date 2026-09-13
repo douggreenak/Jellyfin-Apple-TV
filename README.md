@@ -83,7 +83,7 @@ Point each Apple TV at `http://<box-ip>:8080` (or `:4000`). See
 
 ## Status
 
-- ✅ tvOS app (tvOS 26.4 SDK) — a native Apple-TV **folder browser** (libraries → folders → videos); tapping a video opens the AVKit player directly, paused. A pure server-managed appliance: no on-device config, no local cache, no offline mode. Plays via Jellyfin **adaptive HLS** so MPEG-2 / DVD-sourced content transcodes correctly.
+- ✅ tvOS app (tvOS 26.4 SDK) — a native Apple-TV **folder browser** (libraries → folders → videos); tapping a video opens the AVKit player directly, paused. A pure server-managed appliance: no on-device config, no local cache, no offline mode. Plays via Jellyfin **adaptive HLS** so MPEG-2 / DVD-sourced content transcodes correctly. Ships with a custom App Icon & Top Shelf Image (tvOS Brand Assets).
 - ✅ Management server (Node + TypeScript + SQLite): device + admin API, verified end-to-end (`management-server/server/smoke-test.mjs`).
-- ✅ Admin dashboard (React + MUI, Google blue): live fleet status, self-service **adoption**, per-unit + default config, **bulk fleet actions**, **move-to-new-server** migration (re-point devices to a new server with no re-adoption), and full **server-config export/import** for backup and settings migration.
-- ⏳ Follow-ups: custom tvOS app icon (Brand Assets), playback profiles for non-direct-play formats, optional Keychain storage for the pushed password.
+- ✅ Admin dashboard (React + MUI, Google blue): live fleet status, self-service **adoption**, per-unit + default config, **bulk fleet actions**, **move-to-new-server** migration (re-point devices to a new server with no re-adoption), Apple TV **remote control + power pairing/scheduling**, and full **server-config export/import** for backup and settings migration.
+- ⏳ Follow-ups: playback profiles for non-direct-play formats, optional Keychain storage for the pushed password, periodic playback-progress reporting during video (currently only start/stop are reported — see `docs/ARCHITECTURE.md`).

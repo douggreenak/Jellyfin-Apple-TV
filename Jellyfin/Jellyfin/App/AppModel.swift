@@ -332,7 +332,7 @@ final class AppModel {
         nowPlayingBeatTask?.cancel()
         nowPlayingBeatTask = Task { [weak self] in
             guard let self else { return }
-            try? await self.management.heartbeat(nowPlaying: value)
+            _ = try? await self.management.heartbeat(nowPlaying: value)
         }
     }
 

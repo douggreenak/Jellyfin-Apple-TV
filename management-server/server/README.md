@@ -63,24 +63,45 @@ Base path: `/api/v1`. All JSON.
 | ------ | --------------------------- | ---------------------------------------------- |
 | POST   | `/devices/register`         | Idempotent on `unitId`. Returns `{unit, token}`|
 | GET    | `/devices/:unitId/config`   | ETag via `configVersion`; 304 on If-None-Match |
+| PUT    | `/devices/:unitId/config`   | Device pushes a local edit back; server-owned fields always overwritten |
 | POST   | `/devices/:unitId/heartbeat`| Updates `lastSeenAt`, returns pending command  |
 | POST   | `/devices/:unitId/ack`      | Clears pending command if id matches           |
+| GET    | `/devices/:unitId/live`     | `{screenShare}` — is a dashboard operator watching this unit's screen right now |
+| POST   | `/devices/:unitId/screenshot`| raw `image/jpeg` body — uploads one frame while `screenShare` is true |
 
 ### Admin endpoints
+
+Full detail (bodies, exact response shapes) lives in
+[`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) §2 — this is a quick index.
 
 | Method | Path                            | Notes                                     |
 | ------ | ------------------------------- | ----------------------------------------- |
 | POST   | `/admin/auth/login`             | `{username,password}` -> `{token,expiresAt}` |
 | GET    | `/admin/auth/me`                | `{username}`                              |
+| POST   | `/admin/auth/change-password`   | `{currentPassword,newPassword}` — persisted, overrides `.env` |
 | GET    | `/admin/units`                  | `Unit[]` with derived `status.online`     |
 | GET    | `/admin/units/:unitId`          | `Unit`                                     |
 | PATCH  | `/admin/units/:unitId/config`   | Deep-partial; bumps `configVersion`       |
-| POST   | `/admin/units/:unitId/command`  | `{type:"reload"\|"identify"\|"restart"}`  |
+| POST   | `/admin/units/:unitId/command`  | `{type:"reload"\|"identify"\|"restart"\|"migrate",data?}` |
 | POST   | `/admin/units/:unitId/rename`   | `{displayName}`                           |
 | DELETE | `/admin/units/:unitId`          | `{ok:true}`                               |
+| POST   | `/admin/units/bulk`             | `{unitIds[],action,data?}` — fleet-wide adopt/unadopt/reload/identify/restart/delete/migrate |
+| POST   | `/admin/units/push-jellyfin`    | `{serverUrl,username,password}` -> pushes to every unit's `jellyfin` config |
+| POST   | `/admin/units/:unitId/remote/:action` | `:action` = up\|down\|left\|right\|select\|menu\|play_pause\|top_menu (needs pairing) |
+| GET/PUT/DELETE | `/admin/units/:unitId/power`  | Get/set/remove the unit's pyatv Companion pairing |
+| POST   | `/admin/units/:unitId/power/:action` | `:action` = on\|off — wake/sleep the paired Apple TV |
+| GET    | `/admin/power/available`        | Is `pyatv`/`atvremote` installed on this box |
+| POST   | `/admin/power/scan`             | Discover Apple TVs on the LAN for pairing |
+| POST   | `/admin/power/pair/begin`       | `{atvId}` -> starts Companion pairing (PIN shown on TV) |
+| POST   | `/admin/power/pair/finish`      | `{unitId,pairingId,pin}` -> stores credentials |
+| GET/POST/PUT/DELETE | `/admin/schedules[/:id]` | Power on/off schedules (name, time, weekdays, target); `POST .../:id/run` runs one now |
 | GET    | `/admin/defaults`               | Editable `UnitConfig` template            |
 | PUT    | `/admin/defaults`               | Replace template (validated)              |
 | POST   | `/admin/jellyfin/test`          | `{serverUrl,username,password}` -> libs   |
+| POST   | `/admin/jellyfin/children`      | `{serverUrl,username,password,parentId?}` -> folder-lock tree picker |
+| POST   | `/admin/jellyfin/resolve`       | `{serverUrl,username,password,itemId}` -> display name for a locked folder id |
+| GET    | `/admin/export`                 | Full server-config snapshot (defaults + all units) for backup |
+| POST   | `/admin/import?replace=true`    | Restore a snapshot from `GET /export`     |
 
 ## Behavior notes
 
@@ -103,4 +124,8 @@ Single SQLite file. Tables:
 
 - `units(unitId PK, displayName, groupId, config JSON, status JSON,
   pendingCommand JSON, deviceToken, configVersion, registeredAt)`
-- `settings(key PK, value JSON)` — holds the editable defaults template.
+- `settings(key PK, value JSON)` — generic key-value store: the editable defaults template,
+  the admin password hash (once changed from the dashboard), and per-unit pyatv Companion
+  pairing credentials (`atvpower:<unitId>`).
+- `schedules(id PK, name, enabled, action, targetType, targetValue, time, days JSON,
+  lastRun, lastResult)` — power on/off schedules, ticked every 20s by `scheduler.ts`.

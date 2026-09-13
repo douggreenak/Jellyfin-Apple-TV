@@ -28,9 +28,9 @@ final class PlayerController {
         }
         // Prime the pipeline so the first frame decodes & renders, then pause on it.
         observer = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
-            guard p.timeControlStatus == .playing else { return }
-            Task { @MainActor in
-                guard let self, !self.didAutoPause else { return }
+            guard p.timeControlStatus == .playing, let self else { return }
+            Task { @MainActor [self] in
+                guard !self.didAutoPause else { return }
                 self.didAutoPause = true
                 self.player.pause()
                 self.observer?.invalidate()

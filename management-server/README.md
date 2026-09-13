@@ -6,10 +6,13 @@ from your self-hosted **Jellyfin** media server.
 You run this on **one Linux box** on your network. It gives you:
 
 - A **web dashboard** to see every Apple TV, whether it's online, and what it's playing.
-- One place to change each TV's **settings** (which libraries to show, the look, the
-  Jellyfin login, a settings PIN, etc.) — changes push out to the TVs automatically.
+- One place to change each TV's **settings** (which libraries to show, the look, playback
+  behavior) — changes push out to the TVs automatically.
 - A shared **Jellyfin service account** that gets handed to the TVs so nobody types
   passwords into a television.
+- Optional **Apple TV remote control + power pairing** (over pyatv) so operators can send
+  remote-control key presses or turn a TV on/off from the dashboard, plus **power
+  schedules** to automate that.
 
 The Apple TVs set themselves up: a TV registers with this server on first boot, pulls
 its configuration, and starts playing. You manage everything from the dashboard.
