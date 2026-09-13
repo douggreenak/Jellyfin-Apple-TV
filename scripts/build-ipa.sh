@@ -1,7 +1,10 @@
 #!/bin/bash
 #
 # build-ipa.sh — archive + export an Ad Hoc IPA for the Jellyfin tvOS app and
-# drop it at builds/Jellyfin.ipa.
+# drop it at builds/Jellyfin.ipa. Also stamps a fresh version number into the
+# management server + admin dashboard (they ship together) and generates the
+# fleet's "latest app version" reference file the server compares units
+# against — see docs/ARCHITECTURE.md §2, "App version tracking".
 #
 # Run this by hand anytime you want a fresh IPA:
 #   ./scripts/build-ipa.sh
@@ -21,18 +24,24 @@
 # feature. MARKETING_VERSION ("1.0") is left as whatever's checked into the
 # project; bump that by hand in Xcode when you want a real semantic version
 # change. This overrides the pbxproj's CURRENT_PROJECT_VERSION for just this
-# build — nothing is written back to the checked-in project file.
+# build — nothing is written back to the checked-in project file. The same
+# BUILD_NUMBER also becomes the web app's patch version (see below) — one
+# counter, two products, both traceable to the exact commit that built them.
 
 set -euo pipefail
+export PATH="/opt/homebrew/bin:$PATH"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_DIR="$REPO_ROOT/Jellyfin"
 EXPORT_OPTIONS="$REPO_ROOT/scripts/exportOptions.plist"
 OUT_IPA="$REPO_ROOT/builds/Jellyfin.ipa"
+APP_VERSION_FILE="$REPO_ROOT/management-server/server/latest-app-version.json"
 
 BUILD_NUMBER="$(git -C "$REPO_ROOT" rev-list --count HEAD)"
 MARKETING_VERSION="$(cd "$PROJECT_DIR" && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project Jellyfin.xcodeproj -scheme Jellyfin -showBuildSettings 2>/dev/null | awk -F' = ' '/ MARKETING_VERSION /{print $2; exit}')"
 MARKETING_VERSION="${MARKETING_VERSION:-1.0}"
+APP_VERSION="$MARKETING_VERSION ($BUILD_NUMBER)"
+WEB_VERSION="1.0.$BUILD_NUMBER"
 
 WORK_DIR="$(mktemp -d)"
 ARCHIVE_PATH="$WORK_DIR/Jellyfin.xcarchive"
@@ -60,5 +69,24 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -exportArchi
 mkdir -p "$REPO_ROOT/builds"
 cp "$EXPORT_DIR/Jellyfin.ipa" "$OUT_IPA"
 echo "==> Updated $OUT_IPA ($(du -h "$OUT_IPA" | cut -f1))"
-echo "==> This build reports itself as: $MARKETING_VERSION ($BUILD_NUMBER)"
-echo "    Set that as the fleet's \"Latest app version\" on the Defaults page after you push it via Mosyle."
+echo "==> tvOS app version: $APP_VERSION"
+
+# The fleet's "latest app version" reference — the server compares every
+# unit's reported status.appVersion against this (GET /admin/app-version;
+# no admin UI writes it, this file is the only source). Once this build ships
+# via Mosyle, the deployed server picks it up on its next `git pull` + restart.
+cat > "$APP_VERSION_FILE" << JSON
+{
+  "version": "$APP_VERSION",
+  "generatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+JSON
+echo "==> Wrote $APP_VERSION_FILE"
+
+# The web app (management server + admin dashboard) ships alongside the tvOS
+# app, so it gets a version from the same counter — 1.0.<build>, one push, one
+# traceable number for both products. `npm pkg set` edits package.json in
+# place without disturbing formatting/ordering.
+npm pkg set version="$WEB_VERSION" --prefix "$REPO_ROOT/management-server/server" >/dev/null
+npm pkg set version="$WEB_VERSION" --prefix "$REPO_ROOT/management-server/admin" >/dev/null
+echo "==> Web app version: $WEB_VERSION (management-server/{server,admin}/package.json)"

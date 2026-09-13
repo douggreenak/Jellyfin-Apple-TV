@@ -50,7 +50,7 @@ JSON Schema lives in [`UNIT_CONFIG_SCHEMA.json`](./UNIT_CONFIG_SCHEMA.json). Sum
 | `browse.hiddenLibraryIds` | string[] | Always hidden from the grid. |
 | `appearance.appTitle` | string | Big title on the home screen, e.g. `"Jellyfin"`. |
 | `appearance.theme` | `"system" \| "light" \| "dark"` | tvOS leans dark; default `dark`. |
-| `appearance.accentColorHex` | string | `#RRGGBB`, drives focus/selection tint. |
+| `appearance.accentColorHex` | string | `#RRGGBB`, drives focus/selection tint. Fixed at the default (`#5E5CE6`) for every unit — not exposed as an editable setting anywhere in the admin dashboard by product decision (the dashboard's own theme color, a separate per-browser preference, is what's actually pickable — see §2, "Dashboard theme color"). |
 | `appearance.showClock` | bool | Show a clock in the top bar. |
 | `appearance.showItemTitles` | bool | Titles under posters. |
 | `appearance.posterStyle` | `"poster" \| "thumb" \| "wide"` | Card aspect ratio. |
@@ -64,7 +64,10 @@ A server-side **`Unit`** record wraps the config with telemetry (see schema): `s
 `status.lastSeenAt`, `appVersion`, `tvosVersion`, `model`, `ipAddress`, `nowPlaying`,
 `status.localNetworkName` (§2, "Real device names via Bonjour"), `pendingCommand`,
 `registeredAt`, **`adopted`** — `false` until an admin adopts the device (a freshly-registered
-unit shows up as "ready to adopt" in the dashboard) — and **`powerConfigured`**, whether this
+unit shows up as "ready to adopt" in the dashboard **only while it's online** — this is purely a
+dashboard-side filter, `UnitsDashboard.tsx`'s `pending` list, not server state: an unadopted unit
+that goes offline before anyone adopts it just disappears rather than lingering forever; offline
+tracking is reserved for units you've actually adopted) — and **`powerConfigured`**, whether this
 unit has been paired for Apple TV remote control/power (§2, "Remote control & power"). It also
 carries a computed **`appVersionStatus`** (`"current" | "outdated" | "unknown"`) — see §2, "App
 version tracking".
@@ -126,8 +129,7 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `PUT  /admin/schedules/:id` | `ScheduleInput` | `PowerSchedule` / `404` |
 | `DELETE /admin/schedules/:id` | — | `{ ok: true }` / `404` |
 | `POST /admin/schedules/:id/run` | — | `{ ok: true, result: string }` / `404` — run a schedule immediately ("test" button) |
-| `GET  /admin/app-version` | — | `{ latestVersion: string \| null, counts: {current,outdated,unknown} }` — the fleet's configured "latest" version (§2, "App version tracking") plus a live tally |
-| `PUT  /admin/app-version` | `{ latestVersion }` | `{ latestVersion }` — sets the reference value every unit's reported `status.appVersion` is compared against |
+| `GET  /admin/app-version` | — | `{ latestVersion: string \| null, counts: {current,outdated,unknown} }` — the fleet's "latest" version (§2, "App version tracking") plus a live tally. Read-only: there is deliberately no PUT, see below. |
 | `GET  /admin/defaults` | — | `UnitConfig` template (new units inherit this) |
 | `PUT  /admin/defaults` | `UnitConfig` template | updated template |
 | `POST /admin/jellyfin/test` | `{ serverUrl, username, password }` | `{ ok, serverName, version, libraries: [{id,name}] }` |
@@ -158,15 +160,34 @@ power/remote control.
 ### App version tracking
 
 The server can't push app updates itself (distribution is Ad Hoc via Mosyle, not silent/managed
-MDM app updates), so it instead tracks what units are actually running and flags the ones behind:
-an admin sets the fleet's "latest app version" (Defaults page) after pushing a new build, each
-unit's real version arrives via register + every heartbeat (never stale, even across an app
-update — see §1), and `appVersionStatus` on each `Unit` — `"current"`, `"outdated"`, or
-`"unknown"` (no latest set yet, or the unit hasn't reported one) — is a straight string-equality
-check: `status.appVersion` already encodes an always-increasing build number, so there's no
-ordering to parse, just "is this the exact build we most recently cut." The Units dashboard
-badges outdated units; `scripts/build-ipa.sh` prints the exact string to paste into Defaults
-after every build.
+MDM app updates), so it instead tracks what units are actually running and flags the ones behind
+— entirely automatically, with **no admin-editable setting anywhere in the dashboard**. Every
+push that touches `Jellyfin/` runs `scripts/build-ipa.sh` (via the `pre-push` git hook), which
+writes `management-server/server/latest-app-version.json` (`{ version, generatedAt }`) alongside
+the IPA and commits it — the deployed server just reads that file (see `appVersion.ts`, cached by
+mtime) and picks up the new value on its next `git pull` + restart, same as any other source
+change. Each unit's real version arrives via register + every heartbeat (never stale, even across
+an app update — see §1), and `appVersionStatus` on each `Unit` — `"current"`, `"outdated"`, or
+`"unknown"` (no build has ever been pushed since this feature shipped, or the unit hasn't reported
+one) — is a straight string-equality check: `status.appVersion` already encodes an
+always-increasing build number, so there's no ordering to parse, just "is this the exact build we
+most recently cut." The Units dashboard badges outdated units.
+
+The management server (backend + admin dashboard, which ship together) gets a version from the
+same counter: `scripts/build-ipa.sh` stamps `1.0.<BUILD_NUMBER>` into both `package.json` files on
+every push, so the tvOS build (`1.0 (42)`) and the web app (`1.0.42`) that shipped it are always
+traceable to the same commit. `GET /api/v1/health` returns `{ ok, version }` (read straight from
+`package.json`, no separate file); the dashboard shows it as a quiet `v1.0.42` caption under
+"Signed in as" in the sidebar footer (`AppShell.tsx`).
+
+### Dashboard theme color
+
+The admin dashboard's own accent color (buttons, active nav, focus rings) is a **per-browser,
+admin-only preference** — the palette icon next to the dark/light toggle, persisted to
+`localStorage` (`admin-theme-accent`), with zero relationship to `UnitConfig.appearance.
+accentColorHex`. Picking dashboard colors and TV colors were originally meant to be the same
+control; kept separate by explicit product decision — the TVs always use their fixed default
+regardless of what the operator picks for their own browser.
 
 ### Real device names via Bonjour
 
@@ -286,6 +307,7 @@ management-server/
       routes/admin.ts        auth + units CRUD + bulk actions + power/remote/schedules + export/import + jellyfin + defaults
       jellyfin.ts            server-side Jellyfin credential test + browse/resolve for the folder picker
       defaults.ts            seed default UnitConfig template
+      appVersion.ts          reads latest-app-version.json (generated by build-ipa.sh, mtime-cached)
       util.ts                toUnit/deepMerge/status helpers, PendingCommand + UnitStatus types
     package.json, tsconfig.json, .env.example
   admin/                     React + Vite + MUI (Material Design) dashboard

@@ -40,6 +40,11 @@ interface Datum {
   value: number;
 }
 
+// Full-saturation theme.palette.*.main reads as loud once it's covering whole
+// bars/donut segments instead of a small button — softened once here so every
+// chart on this page is consistently toned down rather than vivid.
+const FILL_ALPHA = 0.72;
+
 /** Count items by a derived key, return [{name,value}] sorted by count desc. */
 function countBy(units: Unit[], keyOf: (u: Unit) => string): Datum[] {
   const map = new Map<string, number>();
@@ -218,7 +223,7 @@ export default function Data() {
                 <AreaChart data={m.growth} margin={{ top: 8, right: 24, left: -8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="growthFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={c.primary.main} stopOpacity={0.45} />
+                      <stop offset="0%" stopColor={c.primary.main} stopOpacity={0.3} />
                       <stop offset="100%" stopColor={c.primary.main} stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
@@ -230,10 +235,10 @@ export default function Data() {
                     type="monotone"
                     dataKey="total"
                     name="Devices"
-                    stroke={c.primary.main}
+                    stroke={alpha(c.primary.main, 0.85)}
                     fill="url(#growthFill)"
                     strokeWidth={2.5}
-                    dot={{ r: 3, fill: c.primary.main, strokeWidth: 0 }}
+                    dot={{ r: 3, fill: alpha(c.primary.main, 0.85), strokeWidth: 0 }}
                     activeDot={{ r: 5 }}
                   />
                 </AreaChart>
@@ -332,7 +337,7 @@ function StatCard({
   return (
     <Grid item xs={6} md={3}>
       <Card sx={{ height: '100%', position: 'relative', overflow: 'hidden' }}>
-        <Box sx={{ position: 'absolute', insetBlock: 0, left: 0, width: 4, bgcolor: color }} />
+        <Box sx={{ position: 'absolute', insetBlock: 0, left: 0, width: 4, bgcolor: alpha(color, 0.85) }} />
         <CardContent sx={{ pl: 2.5 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Typography variant="overline" color="text.secondary">
@@ -437,7 +442,7 @@ function Donut({
             strokeWidth={2}
           >
             {data.map((_, i) => (
-              <Cell key={i} fill={colors[i % colors.length]} />
+              <Cell key={i} fill={alpha(colors[i % colors.length], FILL_ALPHA)} />
             ))}
           </Pie>
           <Tooltip
@@ -513,7 +518,7 @@ function Bars({ data, color, theme }: { data: Datum[]; color: string; theme: The
           axisLine={false}
         />
         <Tooltip {...tooltipProps(theme)} />
-        <Bar dataKey="value" name="Devices" fill={color} radius={[0, 4, 4, 0]} maxBarSize={26}>
+        <Bar dataKey="value" name="Devices" fill={alpha(color, FILL_ALPHA)} radius={[0, 4, 4, 0]} maxBarSize={26}>
           <LabelList
             dataKey="value"
             position="right"

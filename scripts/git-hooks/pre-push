@@ -2,8 +2,9 @@
 #
 # pre-push — before code leaves this machine, rebuild builds/Jellyfin.ipa if
 # the push includes any change under Jellyfin/ (the tvOS app), and fold the
-# refreshed IPA into a new commit so what gets pushed always matches what's
-# in builds/.
+# refreshed IPA — plus a freshly generated app-version reference file and
+# bumped web app package.json versions (see build-ipa.sh) — into a new commit
+# so what gets pushed always matches what's in builds/.
 #
 # Installed via (one-time, per clone):
 #   git config core.hooksPath scripts/git-hooks
@@ -44,17 +45,30 @@ if ! "$REPO_ROOT/scripts/build-ipa.sh"; then
   exit 1
 fi
 
-if git diff --quiet -- builds/Jellyfin.ipa; then
-  echo "pre-push: IPA unchanged, nothing to commit."
+GENERATED_PATHS=(
+  builds/Jellyfin.ipa
+  management-server/server/latest-app-version.json
+  management-server/server/package.json
+  management-server/admin/package.json
+)
+
+# Stage first, then check the STAGED diff — latest-app-version.json is
+# untracked on its very first run ever, and plain `git diff` (unstaged) never
+# sees untracked files, so checking before staging would wrongly conclude
+# "nothing changed" that first time.
+git add -- "${GENERATED_PATHS[@]}"
+if git diff --cached --quiet -- "${GENERATED_PATHS[@]}"; then
+  echo "pre-push: generated files unchanged, nothing to commit."
   exit 0
 fi
 
-git add builds/Jellyfin.ipa
-git commit --no-verify -m "Auto-update built IPA
+git commit --no-verify -m "Auto-update built IPA + version numbers
 
-Rebuilt by scripts/git-hooks/pre-push because Jellyfin/ changed.
+Rebuilt by scripts/git-hooks/pre-push because Jellyfin/ changed: refreshed
+builds/Jellyfin.ipa, the fleet's latest-app-version.json, and bumped both
+web app package.json versions — all from the same git commit count.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
-echo "pre-push: committed refreshed builds/Jellyfin.ipa — it will be included in this push."
+echo "pre-push: committed refreshed build artifacts — they will be included in this push."
 exit 0

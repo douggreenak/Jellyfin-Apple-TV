@@ -163,11 +163,6 @@ export const bulkActionSchema = z
 
 export const renameSchema = z.object({ displayName: z.string().min(1) }).strict();
 
-/** Sets the fleet's "latest app version" reference value (see PUT /admin/app-version). */
-export const appVersionSchema = z
-  .object({ latestVersion: z.string().min(1) })
-  .strict();
-
 export const loginSchema = z
   .object({ username: z.string(), password: z.string() })
   .strict();

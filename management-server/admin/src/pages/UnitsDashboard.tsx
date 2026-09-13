@@ -50,7 +50,6 @@ import ViewListIcon from '@mui/icons-material/ViewList';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import { api, type BulkAction, type CommandType, type ServerExport, type Unit } from '../api/client';
-import StatusDot from '../components/StatusDot';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { formatTimestamp, timeAgo } from '../util/time';
 
@@ -126,7 +125,11 @@ export default function UnitsDashboard() {
   });
 
   const units = unitsQuery.data ?? [];
-  const pending = units.filter((u) => !u.adopted);
+  // Unadopted units only surface as "ready to adopt" while actually online —
+  // one that goes offline before anyone adopts it (never deployed, unplugged,
+  // etc.) just disappears rather than lingering forever. Offline tracking is
+  // reserved for the fleet you've actually adopted (below).
+  const pending = units.filter((u) => !u.adopted && u.status.online);
   const managed = units.filter((u) => u.adopted);
   const onlineCount = managed.filter((u) => u.status.online).length;
 
@@ -175,11 +178,13 @@ export default function UnitsDashboard() {
     bulkMutation.mutate({ ids: selectedVisible, action, data });
   };
 
+  const outdatedCount = managed.filter((u) => u.appVersionStatus === 'outdated').length;
   const summary =
     units.length === 0
       ? 'No Apple TVs registered yet'
       : `${onlineCount} of ${managed.length} adopted online` +
-        (pending.length ? ` · ${pending.length} ready to adopt` : '');
+        (pending.length ? ` · ${pending.length} ready to adopt` : '') +
+        (outdatedCount ? ` · ${outdatedCount} on an old app version` : '');
 
   return (
     <Box>
@@ -877,7 +882,6 @@ function ReadyToAdopt({ pending, busy, adoptingId, onAdopt, onAdoptAll }: ReadyT
             variant="outlined"
             sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'background.paper' }}
           >
-            <StatusDot online={unit.status.online} label={unit.status.online ? 'Online' : 'Offline'} />
             <Box sx={{ flexGrow: 1, minWidth: 0 }}>
               <Typography variant="subtitle1" noWrap>{unit.displayName}</Typography>
               <Typography variant="caption" color="text.secondary" noWrap>

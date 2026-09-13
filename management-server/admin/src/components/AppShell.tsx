@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import AppBar from '@mui/material/AppBar';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
@@ -28,8 +29,11 @@ import LockResetIcon from '@mui/icons-material/LockReset';
 import LiveTvIcon from '@mui/icons-material/LiveTv';
 import DarkModeIcon from '@mui/icons-material/DarkModeOutlined';
 import LightModeIcon from '@mui/icons-material/LightModeOutlined';
+import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
+import CheckIcon from '@mui/icons-material/Check';
 import { useAuth } from '../auth';
 import { useColorMode } from '../colorMode';
+import { api } from '../api/client';
 import ChangePasswordDialog from './ChangePasswordDialog';
 
 const DRAWER_WIDTH = 248;
@@ -47,6 +51,20 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Defaults', to: '/defaults', icon: <TuneIcon /> },
 ];
 
+// This dashboard's own theme color — a per-browser admin preference (see
+// colorMode.tsx) with no relationship to the TVs' own fixed accent color.
+// Same muted "jewel tone" family as elsewhere: distinct without being loud.
+const THEME_PRESETS: { name: string; hex: string }[] = [
+  { name: 'Google blue (default)', hex: '' }, // '' = fall back to GOOGLE_BLUE in theme.ts
+  { name: 'Indigo', hex: '#5E5CE6' },
+  { name: 'Teal', hex: '#2E8F86' },
+  { name: 'Green', hex: '#3F8F5A' },
+  { name: 'Amber', hex: '#B98A3D' },
+  { name: 'Terracotta', hex: '#C97A45' },
+  { name: 'Rose', hex: '#B84C74' },
+  { name: 'Plum', hex: '#7B5AA6' },
+];
+
 function isActive(pathname: string, to: string): boolean {
   if (to === '/') return pathname === '/' || pathname.startsWith('/units');
   return pathname === to || pathname.startsWith(`${to}/`);
@@ -58,7 +76,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { username, logout } = useAuth();
-  const { mode, toggle } = useColorMode();
+  const { mode, toggle, accentHex, setAccent } = useColorMode();
+  const [accentMenuAnchor, setAccentMenuAnchor] = useState<null | HTMLElement>(null);
+  // The web app's own version (management-server + admin ship together,
+  // bumped together by scripts/build-ipa.sh) — a quiet footer line, not
+  // something anyone needs to act on day-to-day.
+  const healthQuery = useQuery({ queryKey: ['health'], queryFn: api.health, staleTime: Infinity });
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -126,6 +149,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <Typography variant="body2" fontWeight={600} noWrap>
           {username ?? '—'}
         </Typography>
+        {healthQuery.data?.version && (
+          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.75 }}>
+            v{healthQuery.data.version}
+          </Typography>
+        )}
       </Box>
     </Box>
   );
@@ -165,6 +193,64 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <Typography variant="h6" noWrap sx={{ fontWeight: 700, flexGrow: 1 }}>
             Jellyfin — Fleet
           </Typography>
+          <Tooltip title="Dashboard theme color">
+            <IconButton
+              color="inherit"
+              onClick={(e) => setAccentMenuAnchor(e.currentTarget)}
+              size="small"
+              sx={{ mr: 0.5 }}
+              aria-label="Dashboard theme color"
+            >
+              <PaletteOutlinedIcon />
+            </IconButton>
+          </Tooltip>
+          <Menu
+            anchorEl={accentMenuAnchor}
+            open={!!accentMenuAnchor}
+            onClose={() => setAccentMenuAnchor(null)}
+          >
+            <Box sx={{ px: 2, py: 1, maxWidth: 220 }}>
+              <Typography variant="caption" color="text.secondary">
+                This dashboard's color — doesn't affect the TVs
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                {THEME_PRESETS.map((preset) => {
+                  const selected = (accentHex ?? '') === preset.hex;
+                  return (
+                    <Tooltip key={preset.name} title={preset.name}>
+                      <Box
+                        role="button"
+                        aria-label={`Use ${preset.name}`}
+                        onClick={() => {
+                          setAccent(preset.hex || null);
+                          setAccentMenuAnchor(null);
+                        }}
+                        sx={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: '50%',
+                          bgcolor: preset.hex || '#1A73E8',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '2px solid',
+                          borderColor: selected ? 'text.primary' : 'transparent',
+                          outline: '1px solid',
+                          outlineColor: 'divider',
+                          outlineOffset: '1px',
+                          transition: 'transform .1s ease',
+                          '&:hover': { transform: 'scale(1.1)' },
+                        }}
+                      >
+                        {selected && <CheckIcon sx={{ fontSize: 16, color: '#fff' }} />}
+                      </Box>
+                    </Tooltip>
+                  );
+                })}
+              </Box>
+            </Box>
+          </Menu>
           <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
             <IconButton
               color="inherit"

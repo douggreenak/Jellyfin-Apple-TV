@@ -113,7 +113,7 @@
         "appVersionStatus": {
           "type": "string",
           "enum": ["current", "outdated", "unknown"],
-          "description": "status.appVersion compared to the fleet's admin-configured latest version (GET/PUT /admin/app-version). \"unknown\" when no latest is set yet or this unit hasn't reported a version."
+          "description": "status.appVersion compared to the fleet's latest version, generated automatically by scripts/build-ipa.sh on every push and exposed read-only at GET /admin/app-version (not admin-editable). \"unknown\" when no build has been pushed since this feature shipped, or this unit hasn't reported a version."
         }
       }
     }

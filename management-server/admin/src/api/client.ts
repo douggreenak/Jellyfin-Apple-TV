@@ -114,9 +114,10 @@ export interface PendingCommand {
 }
 
 /**
- * How a unit's reported `status.appVersion` compares to the fleet's configured
- * latest version (see AppVersionInfo). "unknown" means there isn't enough
- * information yet — no latest version is set, or this unit hasn't reported one.
+ * How a unit's reported `status.appVersion` compares to the fleet's latest —
+ * generated automatically on every push (see scripts/build-ipa.sh), not
+ * admin-editable. "unknown" means there isn't enough information yet — no
+ * build has ever been pushed, or this unit hasn't reported a version.
  */
 export type AppVersionStatus = 'current' | 'outdated' | 'unknown';
 
@@ -132,12 +133,6 @@ export interface Unit {
   /** Whether this unit is paired for remote power control (pyatv). */
   powerConfigured?: boolean;
   appVersionStatus?: AppVersionStatus;
-}
-
-/** GET /admin/app-version — the fleet's configured latest app version + live counts. */
-export interface AppVersionInfo {
-  latestVersion: string | null;
-  counts: { current: number; outdated: number; unknown: number };
 }
 
 export interface JellyfinLibrary {
@@ -353,6 +348,11 @@ export const api = {
     return request<MeResult>('/admin/auth/me');
   },
 
+  /** GET /health — no auth needed. Includes this server's own version. */
+  health(): Promise<{ ok: boolean; version: string }> {
+    return request<{ ok: boolean; version: string }>('/health', { auth: false });
+  },
+
   changePassword(
     currentPassword: string,
     newPassword: string,
@@ -422,18 +422,6 @@ export const api = {
     return request<BulkActionResult>('/admin/units/bulk', {
       method: 'POST',
       body: { unitIds, action, ...(data !== undefined ? { data } : {}) },
-    });
-  },
-
-  // App version
-  getAppVersion(): Promise<AppVersionInfo> {
-    return request<AppVersionInfo>('/admin/app-version');
-  },
-
-  putAppVersion(latestVersion: string): Promise<{ latestVersion: string }> {
-    return request<{ latestVersion: string }>('/admin/app-version', {
-      method: 'PUT',
-      body: { latestVersion },
     });
   },
 

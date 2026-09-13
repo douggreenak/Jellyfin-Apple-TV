@@ -15,11 +15,10 @@ import {
   getSchedule,
   putSchedule,
   deleteSchedule,
-  getLatestAppVersion,
-  setLatestAppVersion,
   type UnitRow,
   type PowerSchedule,
 } from "../db";
+import { getLatestAppVersion } from "../appVersion";
 import {
   atvAvailable,
   setAtvPower,
@@ -48,7 +47,6 @@ import {
   unitConfigSchema,
   bulkActionSchema,
   serverImportSchema,
-  appVersionSchema,
 } from "../schema";
 import type { UnitConfig } from "../schema";
 import { testJellyfin, browseJellyfin, resolveJellyfinItem } from "../jellyfin";
@@ -706,10 +704,13 @@ adminRouter.post(
 
 /**
  * GET /app-version
- * The fleet's configured "latest app version" (e.g. "1.0 (42)", matching what
+ * The fleet's "latest app version" (e.g. "1.0 (42)", matching what
  * DeviceIdentity.appVersion reports) plus a live count of how many registered
- * units are current/outdated/unknown right now. `latestVersion` is `null` until
- * an admin sets one — units then all read "unknown" rather than "outdated".
+ * units are current/outdated/unknown right now. Generated automatically by
+ * scripts/build-ipa.sh on every push, NOT admin-settable — there is
+ * deliberately no PUT here; see appVersion.ts. `latestVersion` is `null` if
+ * no build has ever been pushed since this feature shipped, in which case
+ * every unit reads "unknown" rather than "outdated".
  */
 adminRouter.get("/app-version", requireAdmin, (_req: Request, res: Response) => {
   const latestVersion = getLatestAppVersion() ?? null;
@@ -719,17 +720,6 @@ adminRouter.get("/app-version", requireAdmin, (_req: Request, res: Response) => 
     counts[computeAppVersionStatus(unit.status.appVersion, latestVersion ?? undefined)]++;
   }
   res.json({ latestVersion, counts });
-});
-
-/** PUT /app-version — set the fleet's "latest app version" reference value. */
-adminRouter.put("/app-version", requireAdmin, (req: Request, res: Response) => {
-  const parsed = appVersionSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid body", details: parsed.error.format() });
-    return;
-  }
-  setLatestAppVersion(parsed.data.latestVersion);
-  res.json({ latestVersion: parsed.data.latestVersion });
 });
 
 adminRouter.get("/defaults", requireAdmin, (_req: Request, res: Response) => {

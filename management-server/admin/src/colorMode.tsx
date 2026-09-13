@@ -12,11 +12,18 @@ import type { PaletteMode } from '@mui/material';
 import { createAppTheme } from './theme';
 
 const STORAGE_KEY = 'admin-color-mode';
+// The dashboard's own theme color — a per-browser admin preference with zero
+// relationship to UnitConfig.appearance.accentColorHex (the TVs' own, fixed,
+// non-editable default). Picked from ACCENT_PRESETS via the palette icon next
+// to the dark-mode toggle; null means "use the Google-blue default."
+const ACCENT_STORAGE_KEY = 'admin-theme-accent';
 
 interface ColorModeContextValue {
   mode: PaletteMode;
   toggle: () => void;
   setMode: (mode: PaletteMode) => void;
+  accentHex: string | null;
+  setAccent: (hex: string | null) => void;
 }
 
 const ColorModeContext = createContext<ColorModeContextValue | null>(null);
@@ -34,6 +41,10 @@ function initialMode(): PaletteMode {
   return 'light';
 }
 
+function initialAccent(): string | null {
+  return localStorage.getItem(ACCENT_STORAGE_KEY);
+}
+
 /**
  * Provides the MUI theme (light/dark) plus a toggle. The chosen mode is persisted
  * to localStorage; if the user has never chosen, it follows the OS preference and
@@ -44,6 +55,7 @@ export function ColorModeProvider({ children }: { children: ReactNode }) {
   const [explicit, setExplicit] = useState<boolean>(
     () => localStorage.getItem(STORAGE_KEY) !== null,
   );
+  const [accentHex, setAccentState] = useState<string | null>(initialAccent);
 
   // Follow the OS preference until the user makes an explicit choice.
   useEffect(() => {
@@ -61,16 +73,24 @@ export function ColorModeProvider({ children }: { children: ReactNode }) {
     setModeState(next);
   };
 
+  const setAccent = (hex: string | null) => {
+    if (hex) localStorage.setItem(ACCENT_STORAGE_KEY, hex);
+    else localStorage.removeItem(ACCENT_STORAGE_KEY);
+    setAccentState(hex);
+  };
+
   const value = useMemo<ColorModeContextValue>(
     () => ({
       mode,
       setMode,
       toggle: () => setMode(mode === 'dark' ? 'light' : 'dark'),
+      accentHex,
+      setAccent,
     }),
-    [mode],
+    [mode, accentHex],
   );
 
-  const theme = useMemo(() => createAppTheme(mode), [mode]);
+  const theme = useMemo(() => createAppTheme(mode, accentHex), [mode, accentHex]);
 
   return (
     <ColorModeContext.Provider value={value}>

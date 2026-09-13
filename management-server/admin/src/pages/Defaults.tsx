@@ -2,16 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Snackbar from '@mui/material/Snackbar';
-import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { api, type JellyfinLibrary, type UnitConfig } from '../api/client';
 import TabPanel from '../components/TabPanel';
@@ -35,24 +31,6 @@ export default function Defaults() {
     queryKey: ['defaults'],
     queryFn: api.getDefaults,
     refetchOnWindowFocus: false,
-  });
-
-  const appVersionQuery = useQuery({
-    queryKey: ['appVersion'],
-    queryFn: api.getAppVersion,
-  });
-  const [versionDraft, setVersionDraft] = useState('');
-  useEffect(() => {
-    if (appVersionQuery.data) setVersionDraft(appVersionQuery.data.latestVersion ?? '');
-  }, [appVersionQuery.data]);
-  const versionMutation = useMutation({
-    mutationFn: (v: string) => api.putAppVersion(v),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['appVersion'] });
-      queryClient.invalidateQueries({ queryKey: ['units'] });
-      setSnack('Latest app version updated.');
-    },
-    onError: (err) => setSnack(err instanceof Error ? err.message : 'Save failed.'),
   });
 
   const template = defaultsQuery.data;
@@ -134,47 +112,6 @@ export default function Defaults() {
         only the ones that register from now on. Use a unit's own settings to change an
         existing TV.
       </Alert>
-
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6">App version</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            The build you last pushed via Mosyle — matches what the tvOS app reports,
-            e.g. "1.0 (42)" (marketing version + build number). Every unit is compared
-            against this on the Units page so you can see who's behind.
-          </Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-            <TextField
-              label="Latest app version"
-              value={versionDraft}
-              onChange={(e) => setVersionDraft(e.target.value)}
-              placeholder="1.0 (42)"
-              size="small"
-              sx={{ minWidth: 220 }}
-            />
-            <Button
-              variant="contained"
-              disabled={
-                versionMutation.isPending ||
-                !versionDraft.trim() ||
-                versionDraft === (appVersionQuery.data?.latestVersion ?? '')
-              }
-              onClick={() => versionMutation.mutate(versionDraft.trim())}
-            >
-              Save
-            </Button>
-            {appVersionQuery.data && (
-              <Stack direction="row" spacing={1}>
-                <Chip size="small" color="success" label={`${appVersionQuery.data.counts.current} current`} />
-                <Chip size="small" color="warning" label={`${appVersionQuery.data.counts.outdated} outdated`} />
-                {appVersionQuery.data.counts.unknown > 0 && (
-                  <Chip size="small" label={`${appVersionQuery.data.counts.unknown} unknown`} />
-                )}
-              </Stack>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
 
       <Card>
         <Tabs

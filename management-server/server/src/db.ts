@@ -214,24 +214,6 @@ export function putSetting(key: string, value: string): void {
     .run(key, value);
 }
 
-/* ------------------------------ App version ------------------------------- */
-
-/**
- * The fleet's "latest app version" reference value, set by an admin (Defaults
- * page) after cutting a new build. Compared against each unit's reported
- * `status.appVersion` (see util.ts computeAppVersionStatus) to flag units that
- * are behind. `undefined` until an admin sets it at least once.
- */
-const LATEST_APP_VERSION_KEY = "latestAppVersion";
-
-export function getLatestAppVersion(): string | undefined {
-  return getSetting(LATEST_APP_VERSION_KEY);
-}
-
-export function setLatestAppVersion(version: string): void {
-  putSetting(LATEST_APP_VERSION_KEY, version);
-}
-
 /* --------------------- Per-unit Apple TV power control --------------------- */
 
 /**

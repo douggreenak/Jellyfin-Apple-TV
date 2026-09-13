@@ -1,6 +1,5 @@
 import Box from '@mui/material/Box';
 import FormControlLabel from '@mui/material/FormControlLabel';
-import InputAdornment from '@mui/material/InputAdornment';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
@@ -13,11 +12,13 @@ interface AppearancePanelProps {
   onChange: (next: AppearanceConfig) => void;
 }
 
-const HEX_RE = /^#([0-9a-fA-F]{6})$/;
+// accentColorHex is intentionally not editable here — every TV uses the
+// fixed built-in default. (The dashboard's own theme color is a separate,
+// admin-only preference — see the palette icon next to the dark-mode toggle,
+// colorMode.tsx — with no relationship to this per-fleet TV config at all.)
 
 export default function AppearancePanel({ value, onChange }: AppearancePanelProps) {
   const set = (patch: Partial<AppearanceConfig>) => onChange({ ...value, ...patch });
-  const hexValid = HEX_RE.test(value.accentColorHex);
 
   return (
     <Stack spacing={2.5} maxWidth={560}>
@@ -42,51 +43,6 @@ export default function AppearancePanel({ value, onChange }: AppearancePanelProp
         <MenuItem value="light">Light</MenuItem>
         <MenuItem value="dark">Dark</MenuItem>
       </TextField>
-
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-        <TextField
-          label="Accent color"
-          value={value.accentColorHex}
-          onChange={(e) => set({ accentColorHex: e.target.value })}
-          error={!hexValid}
-          helperText={hexValid ? '#RRGGBB' : 'Must be a #RRGGBB hex color'}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Box
-                  sx={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: '4px',
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    bgcolor: hexValid ? value.accentColorHex : 'transparent',
-                  }}
-                />
-              </InputAdornment>
-            ),
-          }}
-          sx={{ width: 220 }}
-        />
-        <Box
-          component="input"
-          type="color"
-          value={hexValid ? value.accentColorHex : '#5E5CE6'}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            set({ accentColorHex: e.target.value.toUpperCase() })
-          }
-          sx={{
-            mt: 0.25,
-            width: 48,
-            height: 40,
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            p: 0,
-          }}
-          aria-label="Pick accent color"
-        />
-      </Box>
 
       <TextField
         select

@@ -1,34 +1,48 @@
 import { createTheme, type Theme } from '@mui/material/styles';
 import type { PaletteMode } from '@mui/material';
 
-// Google blue brand accent.
+// Google blue brand accent — the fallback before the fleet's own accent color
+// has loaded (or if it's never been set), so the dashboard is never unstyled.
 const GOOGLE_BLUE = '#1A73E8';
 // A lighter blue reads better as the primary on dark surfaces.
 const GOOGLE_BLUE_DARK_MODE = '#8AB4F8';
 
+const HEX_RE = /^#([0-9a-fA-F]{6})$/;
+
 /**
  * Build the MUI theme for a given palette mode. Shared shape/typography/component
  * styling is identical across modes; only the palette differs.
+ *
+ * `accentHex` is the fleet's own accent color (Defaults → Appearance →
+ * accentColorHex) — passing it makes the dashboard's own chrome (buttons,
+ * active nav, focus rings) match what's configured for the TVs, instead of a
+ * fixed brand color unrelated to it. Falls back to the Google-blue default
+ * when absent/invalid (still loading, or never configured). MUI's
+ * `createTheme` derives `light`/`dark`/`contrastText` from `main`
+ * automatically, so a single hex is enough either way.
  */
-export function createAppTheme(mode: PaletteMode): Theme {
+export function createAppTheme(mode: PaletteMode, accentHex?: string | null): Theme {
   const isDark = mode === 'dark';
+  const accent = accentHex && HEX_RE.test(accentHex) ? accentHex : undefined;
 
   return createTheme({
     palette: {
       mode,
-      primary: isDark
-        ? {
-            main: GOOGLE_BLUE_DARK_MODE,
-            light: '#AECBFA',
-            dark: '#669DF6',
-            contrastText: '#0B1320',
-          }
-        : {
-            main: GOOGLE_BLUE,
-            light: '#4285F4',
-            dark: '#1557B0',
-            contrastText: '#ffffff',
-          },
+      primary: accent
+        ? { main: accent }
+        : isDark
+          ? {
+              main: GOOGLE_BLUE_DARK_MODE,
+              light: '#AECBFA',
+              dark: '#669DF6',
+              contrastText: '#0B1320',
+            }
+          : {
+              main: GOOGLE_BLUE,
+              light: '#4285F4',
+              dark: '#1557B0',
+              contrastText: '#ffffff',
+            },
       secondary: {
         main: '#FF9F0A',
       },

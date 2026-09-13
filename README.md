@@ -115,5 +115,13 @@ Point each Apple TV at `http://<box-ip>:8080` (or `:4000`). See
 
 - ✅ tvOS app (tvOS 26.4 SDK) — a native Apple-TV **folder browser** (libraries → folders → videos); tapping a video opens the AVKit player directly, paused. A pure server-managed appliance: no on-device config, no local cache, no offline mode. Plays via Jellyfin **adaptive HLS**, forced SDR/8-bit, so MPEG-2/DVD-sourced content transcodes correctly and HDR/Dolby Vision sources don't hit tvOS's black-screen output-protection behavior. Ships with a custom App Icon & Top Shelf Image (tvOS Brand Assets), and recovers each unit's **real device name via Bonjour** (Apple gates `UIDevice.current.name` to a generic "Apple TV" otherwise).
 - ✅ Management server (Node + TypeScript + SQLite): device + admin API, verified end-to-end (`management-server/server/smoke-test.mjs`).
-- ✅ Admin dashboard (React + MUI, Google blue): live fleet status, self-service **adoption**, per-unit + default config, **bulk fleet actions**, **move-to-new-server** migration (re-point devices to a new server with no re-adoption), Apple TV **remote control + power pairing/scheduling**, **fleet app-version tracking** (flags TVs behind the latest build), and full **server-config export/import** for backup and settings migration.
+- ✅ Admin dashboard (React + MUI, Google blue by default — pick your own from the palette
+  icon, a per-browser preference unrelated to any TV setting): live fleet status
+  (ready-to-adopt units only shown while online), self-service **adoption**, per-unit +
+  default config, **bulk fleet actions**, **move-to-new-server** migration (re-point devices
+  to a new server with no re-adoption), Apple TV **remote control + power
+  pairing/scheduling**, **fleet app-version tracking** (auto-generated on every push, flags
+  TVs behind the latest build — no admin setting to maintain), and full **server-config
+  export/import** for backup and settings migration. Carries its own version number
+  (`v1.0.42`, shown in the sidebar), bumped alongside the tvOS build on every push.
 - ⏳ Follow-ups: playback profiles for non-direct-play formats, optional Keychain storage for the pushed password, periodic playback-progress reporting during video (currently only start/stop are reported — see `docs/ARCHITECTURE.md`).
