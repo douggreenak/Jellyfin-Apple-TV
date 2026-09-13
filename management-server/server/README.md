@@ -44,7 +44,7 @@ Health check: `GET http://localhost:4000/api/v1/health` -> `{ "ok": true }`.
 | ADMIN_USERNAME        | admin                       | Admin login username                       |
 | ADMIN_PASSWORD        | changeme                    | Plaintext password (hashed at boot)        |
 | JWT_SECRET            | replace-me                  | Secret for signing admin JWTs              |
-| ONLINE_WINDOW_SECONDS | 90                          | A unit is "online" if seen within this     |
+| ONLINE_WINDOW_SECONDS | 10                          | A unit is "online" if seen within this (tuned for the 3s fleet heartbeat) |
 | DB_PATH               | ./data/jellyfin.db        | SQLite file path (dir auto-created)         |
 | ADMIN_ORIGIN          | http://localhost:5173       | Allowed CORS origin for the dashboard      |
 

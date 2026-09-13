@@ -54,7 +54,9 @@ import StatusDot from '../components/StatusDot';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { formatTimestamp, timeAgo } from '../util/time';
 
-const POLL_MS = 5_000;
+// The fleet heartbeats every 3s now (see AppModel.heartbeatInterval), so poll
+// at least that often or the dashboard visibly lags behind reality.
+const POLL_MS = 2_000;
 
 type StatusFilter = 'all' | 'online' | 'offline';
 type Density = 'comfortable' | 'compact';

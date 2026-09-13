@@ -88,7 +88,7 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `POST /devices/register` | `{ unitId, deviceName, model, tvosVersion, appVersion }` | `{ unit, token }` | First contact. Server creates the unit from the **defaults template**, issues a device token. Idempotent on `unitId`. |
 | `GET /devices/:unitId/config` | — | `UnitConfig` | Device fetches its config. Supports `ETag`/`If-None-Match` → `304`. |
 | `PUT /devices/:unitId/config` | full `UnitConfig` | `UnitConfig` | Device pushes a local settings edit back to the server (`unitId`/`configVersion`/`updatedAt` are server-owned and always overwritten). Currently unused — no on-device settings UI writes to it today. |
-| `POST /devices/:unitId/heartbeat` | `{ ipAddress, nowPlaying, lastError, appVersion }` | `{ ok, configVersion, command }` | Every ~30 s. Updates `lastSeenAt` and (when present) `status.appVersion`; returns current `configVersion` (device re-fetches config if it changed) and any pending `command`. |
+| `POST /devices/:unitId/heartbeat` | `{ ipAddress, nowPlaying, lastError, appVersion }` | `{ ok, configVersion, command }` | Every ~3 s (the fleet is one LAN — see `AppModel.heartbeatInterval`). Updates `lastSeenAt` and (when present) `status.appVersion`; returns current `configVersion` (device re-fetches config if it changed) and any pending `command`. |
 | `POST /devices/:unitId/ack` | `{ commandId }` | `{ ok }` | Device acknowledges a command it executed. |
 | `GET /devices/:unitId/live` | — | `{ screenShare }` | Cheap poll (every few seconds) telling the device whether a dashboard operator has its screen mirror open right now. |
 | `POST /devices/:unitId/screenshot` | raw `image/jpeg` (not JSON) | `{ ok }` | Uploads one captured screen frame while `screenShare` is true. In-memory only on the server — only the latest frame per unit is kept. |
@@ -229,8 +229,10 @@ folders → videos, and tapping a video opens the player directly, paused on the
 **State machine (`AppModel.phase`):** `launching → registering → connectingJellyfin → ready`, plus
 `waitingForContent` (server reachable, no Jellyfin assigned yet), `needsManagementServer` (server
 unreachable — the app is **blocked** and keeps retrying), and `error(message)`. A background loop
-heartbeats every 30 s when connected (applying config changes and admin commands live); if the
-server disappears it blocks after a few failed heartbeats and auto-recovers when it returns.
+heartbeats every 3 s when connected (applying config changes and admin commands live — tuned
+tight since the whole fleet is on one LAN; see `AppModel.heartbeatInterval`), retrying every 2 s
+while blocked; if the server disappears it blocks after 3 failed heartbeats (~9 s) and
+auto-recovers when it returns.
 
 ---
 

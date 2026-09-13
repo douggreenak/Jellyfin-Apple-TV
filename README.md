@@ -59,10 +59,13 @@ and your Apple TVs register themselves.
 
 ### 2. Run the Apple TV app
 Open `Jellyfin/Jellyfin.xcodeproj` in Xcode, pick an **Apple TV** simulator (or a
-real Apple TV), and Run. By default it points at `http://localhost:4000`
-(the simulator reaches your Mac via `localhost`); change it on the app's Settings
-screen or per-unit in the dashboard. The unit will appear in the dashboard within
-a few seconds.
+real Apple TV), and Run. By default it points at the fleet's Linux box,
+`http://172.16.50.100:4000` (`DeviceIdentity.managementBaseURL`) — real units on
+that network need zero setup. Running the server on your own Mac for local dev
+instead? Enter its address (e.g. `http://localhost:4000`, which the Simulator
+reaches via your Mac's `localhost`) on the app's "management server required"
+screen, or change it per-unit in the dashboard. The unit will appear in the
+dashboard within a few seconds.
 
 > Build from the command line:
 > ```bash

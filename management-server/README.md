@@ -141,6 +141,9 @@ openssl rand -hex 32
 
 ## Pointing the Apple TVs at this server
 
+The app ships with `http://172.16.50.100:4000` baked in as the default
+(`DeviceIdentity.managementBaseURL`) — if that's this box's address on your network, a
+freshly-installed unit finds it with zero setup. Moved the server to a different address?
 Each Apple TV needs the **base address of this box**. Use either:
 
 - `http://<box-ip>:8080`  — goes through the dashboard's nginx (one port for

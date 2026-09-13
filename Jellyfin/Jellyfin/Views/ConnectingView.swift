@@ -65,7 +65,7 @@ struct ManagementSetupView: View {
                     .frame(maxWidth: 1000)
             }
 
-            TextField("http://192.168.1.10:4000", text: $address)
+            TextField("http://172.16.50.100:4000", text: $address)
                 .textContentType(.URL)
                 .frame(maxWidth: 900)
                 .disabled(connecting)

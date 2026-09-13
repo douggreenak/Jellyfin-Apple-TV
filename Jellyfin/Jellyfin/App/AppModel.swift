@@ -61,16 +61,20 @@ final class AppModel {
     /// Bumped by the "reload" command so the home re-fetches its shelves.
     private(set) var reloadToken = 0
 
-    private let heartbeatInterval: Duration = .seconds(30)
-    private let retryInterval: Duration = .seconds(8)
+    // The whole fleet is on one LAN with negligible latency, so these are tuned
+    // for "changes land in a couple of seconds," not "minimize background
+    // traffic" — a config/command push waits for the next heartbeat, so
+    // heartbeatInterval is the main knob for how fast the dashboard feels.
+    private let heartbeatInterval: Duration = .seconds(3)
+    private let retryInterval: Duration = .seconds(2)
     private let failuresBeforeBlock = 3
 
     /// How often to check whether a dashboard operator has this unit's screen
     /// mirror open, while idle (not currently live).
-    private let livePollInterval: Duration = .seconds(3)
+    private let livePollInterval: Duration = .seconds(1)
     /// How often to capture + upload a frame while the mirror IS open — targets
-    /// roughly 1-2 frames/sec, a fast-refreshing snapshot rather than smooth video.
-    private let liveCaptureInterval: Duration = .seconds(0.7)
+    /// roughly 2 frames/sec, a fast-refreshing snapshot rather than smooth video.
+    private let liveCaptureInterval: Duration = .seconds(0.5)
 
     var theme: Theme { Theme(appearance: config.appearance) }
 

@@ -41,10 +41,12 @@ final class DeviceIdentity {
         set { defaults.set(newValue, forKey: Keys.deviceToken) }
     }
 
-    /// Base address of the management server, e.g. "http://localhost:4000".
-    /// Defaults to localhost (which, on the tvOS Simulator, is the Mac host).
+    /// Base address of the management server. Defaults to the fleet's Linux box on
+    /// the church network, so a fresh Apple TV finds it with zero manual setup —
+    /// only the Simulator or an off-site unit would ever need to type a different
+    /// one on the "management server required" screen.
     var managementBaseURL: String {
-        get { defaults.string(forKey: Keys.managementURL) ?? "http://localhost:4000" }
+        get { defaults.string(forKey: Keys.managementURL) ?? "http://172.16.50.100:4000" }
         set { defaults.set(newValue.trimmingCharacters(in: .whitespaces), forKey: Keys.managementURL) }
     }
 

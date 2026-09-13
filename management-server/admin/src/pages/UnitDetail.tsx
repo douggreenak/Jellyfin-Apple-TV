@@ -43,7 +43,8 @@ import PlaybackPanel from '../components/config/PlaybackPanel';
 import { diffUnitConfig, isEmptyObject } from '../util/diff';
 import { formatTimestamp, timeAgo } from '../util/time';
 
-const DETAIL_POLL_MS = 10_000;
+// The fleet heartbeats every 3s now (see AppModel.heartbeatInterval).
+const DETAIL_POLL_MS = 2_000;
 
 export default function UnitDetail() {
   const { id = '' } = useParams();

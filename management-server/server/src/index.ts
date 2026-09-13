@@ -24,7 +24,10 @@ const PORT = Number(process.env.PORT ?? 4000);
 const ADMIN_USERNAME = requireEnv("ADMIN_USERNAME", "admin");
 const ADMIN_PASSWORD = requireEnv("ADMIN_PASSWORD", "changeme");
 const JWT_SECRET = requireEnv("JWT_SECRET", "replace-me");
-const ONLINE_WINDOW_SECONDS = Number(process.env.ONLINE_WINDOW_SECONDS ?? 90);
+// The fleet is all on one LAN heartbeating every 3s (see AppModel.heartbeatInterval) —
+// 10s gives ~3 missed beats of slack before a unit flips to "offline" without the
+// dashboard lagging reality by a minute-plus the way the old 90s/30s pairing did.
+const ONLINE_WINDOW_SECONDS = Number(process.env.ONLINE_WINDOW_SECONDS ?? 10);
 const DB_PATH = process.env.DB_PATH ?? "./data/jellyfin.db";
 const ADMIN_ORIGIN = process.env.ADMIN_ORIGIN ?? "http://localhost:5173";
 // Built admin dashboard (React) — served by this server so the web UI and the
