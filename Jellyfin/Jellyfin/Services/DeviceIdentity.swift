@@ -66,8 +66,17 @@ final class DeviceIdentity {
         #endif
     }
 
+    /// "1.0 (42)" — marketing version + build number. `scripts/build-ipa.sh` stamps a
+    /// fresh, monotonically-increasing build number (git commit count) into every Ad
+    /// Hoc export, so this string changes on every real build even when the marketing
+    /// version (bumped by hand, occasionally) doesn't. Reported at register and on
+    /// every heartbeat so the management server can tell which build a unit is
+    /// actually running, and flag units that are behind the fleet's latest.
     var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let info = Bundle.main.infoDictionary
+        let marketing = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        return "\(marketing) (\(build))"
     }
 
     /// Hardware identifier such as "AppleTV14,1".

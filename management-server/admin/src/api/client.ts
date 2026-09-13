@@ -106,6 +106,13 @@ export interface PendingCommand {
   issuedAt?: string;
 }
 
+/**
+ * How a unit's reported `status.appVersion` compares to the fleet's configured
+ * latest version (see AppVersionInfo). "unknown" means there isn't enough
+ * information yet — no latest version is set, or this unit hasn't reported one.
+ */
+export type AppVersionStatus = 'current' | 'outdated' | 'unknown';
+
 export interface Unit {
   unitId: string;
   displayName: string;
@@ -117,6 +124,13 @@ export interface Unit {
   adopted: boolean;
   /** Whether this unit is paired for remote power control (pyatv). */
   powerConfigured?: boolean;
+  appVersionStatus?: AppVersionStatus;
+}
+
+/** GET /admin/app-version — the fleet's configured latest app version + live counts. */
+export interface AppVersionInfo {
+  latestVersion: string | null;
+  counts: { current: number; outdated: number; unknown: number };
 }
 
 export interface JellyfinLibrary {
@@ -401,6 +415,18 @@ export const api = {
     return request<BulkActionResult>('/admin/units/bulk', {
       method: 'POST',
       body: { unitIds, action, ...(data !== undefined ? { data } : {}) },
+    });
+  },
+
+  // App version
+  getAppVersion(): Promise<AppVersionInfo> {
+    return request<AppVersionInfo>('/admin/app-version');
+  },
+
+  putAppVersion(latestVersion: string): Promise<{ latestVersion: string }> {
+    return request<{ latestVersion: string }>('/admin/app-version', {
+      method: 'PUT',
+      body: { latestVersion },
     });
   },
 

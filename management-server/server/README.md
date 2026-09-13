@@ -64,7 +64,7 @@ Base path: `/api/v1`. All JSON.
 | POST   | `/devices/register`         | Idempotent on `unitId`. Returns `{unit, token}`|
 | GET    | `/devices/:unitId/config`   | ETag via `configVersion`; 304 on If-None-Match |
 | PUT    | `/devices/:unitId/config`   | Device pushes a local edit back; server-owned fields always overwritten |
-| POST   | `/devices/:unitId/heartbeat`| Updates `lastSeenAt`, returns pending command  |
+| POST   | `/devices/:unitId/heartbeat`| Updates `lastSeenAt` + `status.appVersion` (if sent), returns pending command |
 | POST   | `/devices/:unitId/ack`      | Clears pending command if id matches           |
 | GET    | `/devices/:unitId/live`     | `{screenShare}` — is a dashboard operator watching this unit's screen right now |
 | POST   | `/devices/:unitId/screenshot`| raw `image/jpeg` body — uploads one frame while `screenShare` is true |
@@ -95,6 +95,8 @@ Full detail (bodies, exact response shapes) lives in
 | POST   | `/admin/power/pair/begin`       | `{atvId}` -> starts Companion pairing (PIN shown on TV) |
 | POST   | `/admin/power/pair/finish`      | `{unitId,pairingId,pin}` -> stores credentials |
 | GET/POST/PUT/DELETE | `/admin/schedules[/:id]` | Power on/off schedules (name, time, weekdays, target); `POST .../:id/run` runs one now |
+| GET    | `/admin/app-version`            | `{latestVersion,counts}` — fleet's configured latest build + current/outdated/unknown tally |
+| PUT    | `/admin/app-version`            | `{latestVersion}` — sets the reference value units are compared against |
 | GET    | `/admin/defaults`               | Editable `UnitConfig` template            |
 | PUT    | `/admin/defaults`               | Replace template (validated)              |
 | POST   | `/admin/jellyfin/test`          | `{serverUrl,username,password}` -> libs   |

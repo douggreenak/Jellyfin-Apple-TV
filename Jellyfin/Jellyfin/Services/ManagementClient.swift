@@ -63,6 +63,11 @@ struct HeartbeatRequest: Encodable {
     var ipAddress: String?
     var nowPlaying: NowPlaying?
     var lastError: String?
+    /// Sent on every heartbeat (not just at register) so the server's view of what a
+    /// unit is running never goes stale — a unit keeps its device token across an
+    /// app update (pushed via MDM), so it never re-registers, and register is the
+    /// only other place this is reported.
+    var appVersion: String?
 
     struct NowPlaying: Encodable {
         let title: String
@@ -70,7 +75,7 @@ struct HeartbeatRequest: Encodable {
         let positionTicks: Int64
     }
 
-    enum CodingKeys: String, CodingKey { case ipAddress, nowPlaying, lastError }
+    enum CodingKeys: String, CodingKey { case ipAddress, nowPlaying, lastError, appVersion }
 
     /// `nowPlaying` and `lastError` are *always* encoded (as `null` when absent),
     /// so each heartbeat reports the unit's current status. That lets the server
@@ -81,6 +86,7 @@ struct HeartbeatRequest: Encodable {
         try c.encodeIfPresent(ipAddress, forKey: .ipAddress)
         try c.encode(nowPlaying, forKey: .nowPlaying)
         try c.encode(lastError, forKey: .lastError)
+        try c.encodeIfPresent(appVersion, forKey: .appVersion)
     }
 }
 
@@ -168,7 +174,10 @@ final class ManagementClient {
 
     @discardableResult
     func heartbeat(ipAddress: String? = nil, nowPlaying: HeartbeatRequest.NowPlaying? = nil, lastError: String? = nil) async throws -> HeartbeatResponse {
-        let payload = HeartbeatRequest(ipAddress: ipAddress, nowPlaying: nowPlaying, lastError: lastError)
+        // appVersion rides on every heartbeat (not just register) so the server
+        // notices an app update even though the unit keeps its device token —
+        // see HeartbeatRequest.appVersion.
+        let payload = HeartbeatRequest(ipAddress: ipAddress, nowPlaying: nowPlaying, lastError: lastError, appVersion: identity.appVersion)
         let body = try encoder.encode(payload)
         guard let request = request("devices/\(identity.unitId)/heartbeat", method: "POST", body: body) else {
             throw ManagementError.badURL

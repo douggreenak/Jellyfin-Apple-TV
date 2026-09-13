@@ -60,7 +60,9 @@ built `dist/` from the same origin as the API (or set up an equivalent reverse p
   remote-control key presses or turn it on/off). A sticky save bar PATCHes only the fields
   you changed and confirms with a snackbar.
 - **Defaults** (`/defaults`) — Edit the template applied to newly registered TVs, including a
-  **"push to all"** action that re-sends just the Jellyfin account to every existing unit.
+  **"push to all"** action that re-sends just the Jellyfin account to every existing unit, and
+  an **App version** field: set the build you last pushed via Mosyle and every unit on the
+  Units page gets flagged current/outdated against it.
 - **Schedule** (`/schedule`) — Power on/off schedules (name, time, weekdays, target
   all/group/unit); create, edit, delete, or run one immediately to test it.
 - **Data** (`/data`) — Export the full server config (defaults + every unit) as a backup
@@ -82,6 +84,7 @@ fully-detailed list):
   `POST /admin/power/scan`, `POST /admin/power/pair/begin`, `POST /admin/power/pair/finish`
 - `GET`/`POST`/`PUT`/`DELETE /admin/schedules[/:id]`, `POST /admin/schedules/:id/run`
 - `GET /admin/defaults`, `PUT /admin/defaults`
+- `GET /admin/app-version`, `PUT /admin/app-version`
 - `POST /admin/jellyfin/test`, `POST /admin/jellyfin/children`, `POST /admin/jellyfin/resolve`
 - `GET /admin/export`, `POST /admin/import`
 

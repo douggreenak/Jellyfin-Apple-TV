@@ -1021,6 +1021,9 @@ function UnitCard({
           {status.appVersion && (
             <Chip size="small" variant="outlined" label={`App ${status.appVersion}`} />
           )}
+          {unit.appVersionStatus === 'outdated' && (
+            <Chip size="small" color="warning" label="Update available" />
+          )}
         </Stack>
 
         {!compact && (

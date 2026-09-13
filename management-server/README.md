@@ -13,6 +13,9 @@ You run this on **one Linux box** on your network. It gives you:
 - Optional **Apple TV remote control + power pairing** (over pyatv) so operators can send
   remote-control key presses or turn a TV on/off from the dashboard, plus **power
   schedules** to automate that.
+- **App version tracking**: set the build you last pushed via Mosyle and the dashboard flags
+  any TV still running an older one — the app has no auto-update mechanism of its own
+  (Ad Hoc distribution, not managed MDM app pushes), so this is how you know who needs it.
 
 The Apple TVs set themselves up: a TV registers with this server on first boot, pulls
 its configuration, and starts playing. You manage everything from the dashboard.

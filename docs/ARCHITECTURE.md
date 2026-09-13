@@ -65,7 +65,15 @@ A server-side **`Unit`** record wraps the config with telemetry (see schema): `s
 `pendingCommand`, `registeredAt`, **`adopted`** — `false` until an admin adopts the device
 (a freshly-registered unit shows up as "ready to adopt" in the dashboard) — and
 **`powerConfigured`**, whether this unit has been paired for Apple TV remote control/power
-(§2, "Remote control & power").
+(§2, "Remote control & power"). It also carries a computed **`appVersionStatus`**
+(`"current" | "outdated" | "unknown"`) — see §2, "App version tracking".
+
+`status.appVersion` is `"<marketing> (<build>)"`, e.g. `"1.0 (42)"` — `scripts/build-ipa.sh`
+stamps a fresh, monotonically-increasing build number (git commit count) into every Ad Hoc
+export, so it changes on every real build even when the marketing version doesn't. It's
+reported at register **and on every heartbeat**, because a unit keeps its device token across
+an app update pushed via MDM (it never re-registers), so relying on register alone would let
+the server's view of a unit's version go stale forever after the first install.
 
 ---
 
@@ -80,7 +88,7 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `POST /devices/register` | `{ unitId, deviceName, model, tvosVersion, appVersion }` | `{ unit, token }` | First contact. Server creates the unit from the **defaults template**, issues a device token. Idempotent on `unitId`. |
 | `GET /devices/:unitId/config` | — | `UnitConfig` | Device fetches its config. Supports `ETag`/`If-None-Match` → `304`. |
 | `PUT /devices/:unitId/config` | full `UnitConfig` | `UnitConfig` | Device pushes a local settings edit back to the server (`unitId`/`configVersion`/`updatedAt` are server-owned and always overwritten). Currently unused — no on-device settings UI writes to it today. |
-| `POST /devices/:unitId/heartbeat` | `{ ipAddress, nowPlaying, lastError }` | `{ ok, configVersion, command }` | Every ~30 s. Updates `lastSeenAt`; returns current `configVersion` (device re-fetches config if it changed) and any pending `command`. |
+| `POST /devices/:unitId/heartbeat` | `{ ipAddress, nowPlaying, lastError, appVersion }` | `{ ok, configVersion, command }` | Every ~30 s. Updates `lastSeenAt` and (when present) `status.appVersion`; returns current `configVersion` (device re-fetches config if it changed) and any pending `command`. |
 | `POST /devices/:unitId/ack` | `{ commandId }` | `{ ok }` | Device acknowledges a command it executed. |
 | `GET /devices/:unitId/live` | — | `{ screenShare }` | Cheap poll (every few seconds) telling the device whether a dashboard operator has its screen mirror open right now. |
 | `POST /devices/:unitId/screenshot` | raw `image/jpeg` (not JSON) | `{ ok }` | Uploads one captured screen frame while `screenShare` is true. In-memory only on the server — only the latest frame per unit is kept. |
@@ -117,6 +125,8 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `PUT  /admin/schedules/:id` | `ScheduleInput` | `PowerSchedule` / `404` |
 | `DELETE /admin/schedules/:id` | — | `{ ok: true }` / `404` |
 | `POST /admin/schedules/:id/run` | — | `{ ok: true, result: string }` / `404` — run a schedule immediately ("test" button) |
+| `GET  /admin/app-version` | — | `{ latestVersion: string \| null, counts: {current,outdated,unknown} }` — the fleet's configured "latest" version (§2, "App version tracking") plus a live tally |
+| `PUT  /admin/app-version` | `{ latestVersion }` | `{ latestVersion }` — sets the reference value every unit's reported `status.appVersion` is compared against |
 | `GET  /admin/defaults` | — | `UnitConfig` template (new units inherit this) |
 | `PUT  /admin/defaults` | `UnitConfig` template | updated template |
 | `POST /admin/jellyfin/test` | `{ serverUrl, username, password }` | `{ ok, serverName, version, libraries: [{id,name}] }` |
@@ -143,6 +153,19 @@ Apple TVs have no true hard-off) and **remote-control key relay** (`up`/`down`/`
 weekdays) is checked every 20s server-side and fires against its target units' stored pairings —
 this is a server cron, not a device feature, and requires the same per-unit pairing as manual
 power/remote control.
+
+### App version tracking
+
+The server can't push app updates itself (distribution is Ad Hoc via Mosyle, not silent/managed
+MDM app updates), so it instead tracks what units are actually running and flags the ones behind:
+an admin sets the fleet's "latest app version" (Defaults page) after pushing a new build, each
+unit's real version arrives via register + every heartbeat (never stale, even across an app
+update — see §1), and `appVersionStatus` on each `Unit` — `"current"`, `"outdated"`, or
+`"unknown"` (no latest set yet, or the unit hasn't reported one) — is a straight string-equality
+check: `status.appVersion` already encodes an always-increasing build number, so there's no
+ordering to parse, just "is this the exact build we most recently cut." The Units dashboard
+badges outdated units; `scripts/build-ipa.sh` prints the exact string to paste into Defaults
+after every build.
 
 ---
 

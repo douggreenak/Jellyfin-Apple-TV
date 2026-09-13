@@ -15,6 +15,8 @@ import {
   getSchedule,
   putSchedule,
   deleteSchedule,
+  getLatestAppVersion,
+  setLatestAppVersion,
   type UnitRow,
   type PowerSchedule,
 } from "../db";
@@ -46,6 +48,7 @@ import {
   unitConfigSchema,
   bulkActionSchema,
   serverImportSchema,
+  appVersionSchema,
 } from "../schema";
 import type { UnitConfig } from "../schema";
 import { testJellyfin, browseJellyfin, resolveJellyfinItem } from "../jellyfin";
@@ -55,6 +58,7 @@ import {
   deepMerge,
   newId,
   emptyStatus,
+  computeAppVersionStatus,
   type PendingCommand,
 } from "../util";
 
@@ -147,10 +151,15 @@ adminRouter.post(
 /* -------------------------------- Units --------------------------------- */
 
 adminRouter.get("/units", requireAdmin, (_req: Request, res: Response) => {
-  const units = listUnitRows().map((row) => ({
-    ...toUnit(row),
-    powerConfigured: hasUnitPower(row.unitId),
-  }));
+  const latestVersion = getLatestAppVersion();
+  const units = listUnitRows().map((row) => {
+    const unit = toUnit(row);
+    return {
+      ...unit,
+      powerConfigured: hasUnitPower(row.unitId),
+      appVersionStatus: computeAppVersionStatus(unit.status.appVersion, latestVersion),
+    };
+  });
   res.json(units);
 });
 
@@ -160,7 +169,12 @@ adminRouter.get("/units/:unitId", requireAdmin, (req: Request, res: Response) =>
     res.status(404).json({ error: "Unit not found" });
     return;
   }
-  res.json({ ...toUnit(row), powerConfigured: hasUnitPower(row.unitId) });
+  const unit = toUnit(row);
+  res.json({
+    ...unit,
+    powerConfigured: hasUnitPower(row.unitId),
+    appVersionStatus: computeAppVersionStatus(unit.status.appVersion, getLatestAppVersion()),
+  });
 });
 
 /**
@@ -689,6 +703,34 @@ adminRouter.post(
 );
 
 /* ------------------------------- Defaults ------------------------------- */
+
+/**
+ * GET /app-version
+ * The fleet's configured "latest app version" (e.g. "1.0 (42)", matching what
+ * DeviceIdentity.appVersion reports) plus a live count of how many registered
+ * units are current/outdated/unknown right now. `latestVersion` is `null` until
+ * an admin sets one — units then all read "unknown" rather than "outdated".
+ */
+adminRouter.get("/app-version", requireAdmin, (_req: Request, res: Response) => {
+  const latestVersion = getLatestAppVersion() ?? null;
+  const counts = { current: 0, outdated: 0, unknown: 0 };
+  for (const row of listUnitRows()) {
+    const unit = toUnit(row);
+    counts[computeAppVersionStatus(unit.status.appVersion, latestVersion ?? undefined)]++;
+  }
+  res.json({ latestVersion, counts });
+});
+
+/** PUT /app-version — set the fleet's "latest app version" reference value. */
+adminRouter.put("/app-version", requireAdmin, (req: Request, res: Response) => {
+  const parsed = appVersionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid body", details: parsed.error.format() });
+    return;
+  }
+  setLatestAppVersion(parsed.data.latestVersion);
+  res.json({ latestVersion: parsed.data.latestVersion });
+});
 
 adminRouter.get("/defaults", requireAdmin, (_req: Request, res: Response) => {
   res.json(getDefaultsTemplate());

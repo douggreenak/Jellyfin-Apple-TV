@@ -335,7 +335,12 @@ function GeneralTab({
     },
     { label: 'Model', value: status.model ?? '—' },
     { label: 'tvOS', value: status.tvosVersion ?? '—' },
-    { label: 'App version', value: status.appVersion ?? '—' },
+    {
+      label: 'App version',
+      value:
+        (status.appVersion ?? '—') +
+        (unit.appVersionStatus === 'outdated' ? ' · Update available' : ''),
+    },
     { label: 'IP address', value: status.ipAddress ?? '—' },
     {
       label: 'Now playing',

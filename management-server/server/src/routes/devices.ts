@@ -201,6 +201,10 @@ devicesRouter.post(
     // means "healthy now", which clears any previously stored error.
     if (parsed.data.lastError !== undefined)
       status.lastError = parsed.data.lastError ? parsed.data.lastError : null;
+    // A unit keeps its device token across an app update (pushed via MDM), so it
+    // never re-registers — appVersion is refreshed here on every heartbeat instead
+    // of only at register, or the server's view of it would go stale forever.
+    if (parsed.data.appVersion !== undefined) status.appVersion = parsed.data.appVersion;
 
     const updated: UnitRow = { ...row, status: JSON.stringify(status) };
     updateUnitRow(updated);

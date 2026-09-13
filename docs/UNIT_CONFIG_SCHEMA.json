@@ -64,7 +64,7 @@
       "description": "Server-side record: config plus telemetry. Returned by admin endpoints.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["unitId", "displayName", "config", "status", "registeredAt"],
+      "required": ["unitId", "displayName", "config", "status", "registeredAt", "adopted"],
       "properties": {
         "unitId": { "type": "string" },
         "displayName": { "type": "string" },
@@ -77,7 +77,7 @@
           "properties": {
             "online": { "type": "boolean" },
             "lastSeenAt": { "type": ["string", "null"], "format": "date-time" },
-            "appVersion": { "type": ["string", "null"] },
+            "appVersion": { "type": ["string", "null"], "description": "\"<marketing> (<build>)\", e.g. \"1.0 (42)\". Reported at register and on every heartbeat." },
             "tvosVersion": { "type": ["string", "null"] },
             "model": { "type": ["string", "null"] },
             "ipAddress": { "type": ["string", "null"] },
@@ -103,7 +103,14 @@
             "issuedAt": { "type": "string", "format": "date-time" }
           }
         },
-        "registeredAt": { "type": "string", "format": "date-time" }
+        "registeredAt": { "type": "string", "format": "date-time" },
+        "adopted": { "type": "boolean", "description": "false until an admin adopts the device (applies the defaults template)." },
+        "powerConfigured": { "type": "boolean", "description": "Whether this unit is paired for Apple TV remote control/power over pyatv." },
+        "appVersionStatus": {
+          "type": "string",
+          "enum": ["current", "outdated", "unknown"],
+          "description": "status.appVersion compared to the fleet's admin-configured latest version (GET/PUT /admin/app-version). \"unknown\" when no latest is set yet or this unit hasn't reported a version."
+        }
       }
     }
   }

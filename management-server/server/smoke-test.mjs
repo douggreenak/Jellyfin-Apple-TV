@@ -87,7 +87,29 @@ check("ack ok", (await j(r)).ok === true);
 r = await fetch(`${BASE}/devices/${unitId}/heartbeat`, { method: "POST", headers: dh, body: JSON.stringify({}) });
 check("command cleared after ack", (await j(r)).command === null);
 
-console.log("8. Cleanup: delete unit");
+console.log("8. App version tracking");
+r = await fetch(`${BASE}/admin/app-version`, { method: "PUT", headers: ah, body: JSON.stringify({ latestVersion: "1.0 (99)" }) });
+check("set latest version 200", r.status === 200, `got ${r.status}`);
+check("set latest version echoed", (await j(r)).latestVersion === "1.0 (99)");
+r = await fetch(`${BASE}/admin/app-version`, { headers: ah });
+const av = await j(r);
+check("get latest version", av.latestVersion === "1.0 (99)");
+check("counts shape present", typeof av.counts.outdated === "number" && typeof av.counts.current === "number");
+
+// Registered with appVersion "1.0" (step 1) and never heartbeat with a version yet -> outdated (mismatch).
+r = await fetch(`${BASE}/admin/units/${unitId}`, { headers: ah });
+check("mismatched version -> outdated", (await j(r)).appVersionStatus === "outdated");
+
+// Heartbeat now reports the exact latest version -> the server's view refreshes
+// even though this unit already registered once (the staleness bug this fixes).
+r = await fetch(`${BASE}/devices/${unitId}/heartbeat`, { method: "POST", headers: dh, body: JSON.stringify({ appVersion: "1.0 (99)" }) });
+check("heartbeat with appVersion ok", (await j(r)).ok === true);
+r = await fetch(`${BASE}/admin/units/${unitId}`, { headers: ah });
+const afterMatch = await j(r);
+check("heartbeat refreshed status.appVersion", afterMatch.status.appVersion === "1.0 (99)");
+check("matching version -> current", afterMatch.appVersionStatus === "current");
+
+console.log("9. Cleanup: delete unit");
 r = await fetch(`${BASE}/admin/units/${unitId}`, { method: "DELETE", headers: ah });
 check("delete ok", (await j(r)).ok === true);
 

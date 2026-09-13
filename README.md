@@ -93,6 +93,12 @@ git config core.hooksPath scripts/git-hooks
 Skip it for one push with `git push --no-verify`; undo the setup with
 `git config --unset core.hooksPath`.
 
+Every build gets a real, distinct version — `scripts/build-ipa.sh` stamps in a
+monotonically-increasing build number (git commit count), so the app reports e.g. `"1.0 (42)"`
+instead of always `"1.0"`. After pushing a new IPA via Mosyle, set that exact string as the
+**Latest app version** on the dashboard's Defaults page — the Units page then flags any TV
+still running an older build. See `docs/ARCHITECTURE.md` §2, "App version tracking".
+
 ### 3. Deploy the server to the Linux box
 ```bash
 cd management-server
@@ -106,5 +112,5 @@ Point each Apple TV at `http://<box-ip>:8080` (or `:4000`). See
 
 - ✅ tvOS app (tvOS 26.4 SDK) — a native Apple-TV **folder browser** (libraries → folders → videos); tapping a video opens the AVKit player directly, paused. A pure server-managed appliance: no on-device config, no local cache, no offline mode. Plays via Jellyfin **adaptive HLS** so MPEG-2 / DVD-sourced content transcodes correctly. Ships with a custom App Icon & Top Shelf Image (tvOS Brand Assets).
 - ✅ Management server (Node + TypeScript + SQLite): device + admin API, verified end-to-end (`management-server/server/smoke-test.mjs`).
-- ✅ Admin dashboard (React + MUI, Google blue): live fleet status, self-service **adoption**, per-unit + default config, **bulk fleet actions**, **move-to-new-server** migration (re-point devices to a new server with no re-adoption), Apple TV **remote control + power pairing/scheduling**, and full **server-config export/import** for backup and settings migration.
+- ✅ Admin dashboard (React + MUI, Google blue): live fleet status, self-service **adoption**, per-unit + default config, **bulk fleet actions**, **move-to-new-server** migration (re-point devices to a new server with no re-adoption), Apple TV **remote control + power pairing/scheduling**, **fleet app-version tracking** (flags TVs behind the latest build), and full **server-config export/import** for backup and settings migration.
 - ⏳ Follow-ups: playback profiles for non-direct-play formats, optional Keychain storage for the pushed password, periodic playback-progress reporting during video (currently only start/stop are reported — see `docs/ARCHITECTURE.md`).

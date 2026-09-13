@@ -108,6 +108,9 @@ export const heartbeatSchema = z
     ipAddress: z.string().optional(),
     nowPlaying: nowPlayingSchema.optional(),
     lastError: z.string().nullable().optional(),
+    // Sent on every heartbeat (not just register) so the server's view of what a
+    // unit is running never goes stale across an app update pushed via MDM.
+    appVersion: z.string().optional(),
   })
   .strict();
 
@@ -155,6 +158,11 @@ export const bulkActionSchema = z
   .strict();
 
 export const renameSchema = z.object({ displayName: z.string().min(1) }).strict();
+
+/** Sets the fleet's "latest app version" reference value (see PUT /admin/app-version). */
+export const appVersionSchema = z
+  .object({ latestVersion: z.string().min(1) })
+  .strict();
 
 export const loginSchema = z
   .object({ username: z.string(), password: z.string() })

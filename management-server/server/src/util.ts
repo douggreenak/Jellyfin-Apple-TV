@@ -58,6 +58,27 @@ export interface UnitApi {
   adopted: boolean;
   /** Whether this unit is paired for remote power control (set by admin routes). */
   powerConfigured?: boolean;
+  /** How this unit's reported appVersion compares to the fleet's latest (set by admin routes). */
+  appVersionStatus?: AppVersionStatus;
+}
+
+export type AppVersionStatus = "current" | "outdated" | "unknown";
+
+/**
+ * Compares a unit's reported `status.appVersion` against the fleet's configured
+ * "latest" value. Exact string equality — appVersion is "marketing (build)"
+ * (e.g. "1.0 (42)") and the build number is a monotonically increasing counter
+ * stamped in at export time, so there's no meaningful ordering to parse: a
+ * mismatch just means "not the build we most recently cut."
+ * "unknown" means there isn't enough information to say either way (the fleet
+ * has no latest version configured yet, or this unit hasn't reported one).
+ */
+export function computeAppVersionStatus(
+  reported: string | null | undefined,
+  latest: string | undefined
+): AppVersionStatus {
+  if (!latest || !reported) return "unknown";
+  return reported === latest ? "current" : "outdated";
 }
 
 let onlineWindowSeconds = 90;
