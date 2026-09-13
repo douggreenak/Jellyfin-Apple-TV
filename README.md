@@ -72,6 +72,27 @@ a few seconds.
 >   -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation)' build
 > ```
 
+### Building the Ad Hoc IPA for MDM (Mosyle)
+
+[`builds/Jellyfin.ipa`](builds/Jellyfin.ipa) is a signed Ad Hoc build (team `THW3L89YM6`,
+automatic signing) ready to host and push over MDM. Refresh it anytime with:
+
+```bash
+./scripts/build-ipa.sh
+```
+
+It's also kept in sync **automatically**: a `pre-push` git hook rebuilds and re-commits
+`builds/Jellyfin.ipa` whenever a push includes changes under `Jellyfin/`, so the IPA in the
+repo never falls behind the app source. One-time setup per clone (hooks aren't copied by
+`git clone` on their own):
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+Skip it for one push with `git push --no-verify`; undo the setup with
+`git config --unset core.hooksPath`.
+
 ### 3. Deploy the server to the Linux box
 ```bash
 cd management-server

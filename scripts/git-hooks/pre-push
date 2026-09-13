@@ -1,0 +1,60 @@
+#!/bin/bash
+#
+# pre-push — before code leaves this machine, rebuild builds/Jellyfin.ipa if
+# the push includes any change under Jellyfin/ (the tvOS app), and fold the
+# refreshed IPA into a new commit so what gets pushed always matches what's
+# in builds/.
+#
+# Installed via (one-time, per clone):
+#   git config core.hooksPath scripts/git-hooks
+#
+# Skip once with: git push --no-verify
+# Uninstall with:  git config --unset core.hooksPath
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$REPO_ROOT"
+
+ZERO_SHA="0000000000000000000000000000000000000000"
+EMPTY_TREE="$(git hash-object -t tree /dev/null)"
+NEEDS_BUILD=0
+
+# stdin lines: "<local-ref> <local-sha> <remote-ref> <remote-sha>"
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$ZERO_SHA" ] && continue # this ref is being deleted, nothing to build
+
+  base="$remote_sha"
+  [ "$base" = "$ZERO_SHA" ] && base="$EMPTY_TREE" # brand-new remote branch: diff from nothing
+
+  if ! git diff --quiet "$base" "$local_sha" -- Jellyfin/ 2>/dev/null; then
+    NEEDS_BUILD=1
+  fi
+done
+
+if [ "$NEEDS_BUILD" -eq 0 ]; then
+  exit 0
+fi
+
+echo "pre-push: Jellyfin/ changed since the last push — rebuilding builds/Jellyfin.ipa…"
+
+if ! "$REPO_ROOT/scripts/build-ipa.sh"; then
+  echo "pre-push: IPA build FAILED — aborting push so a stale/missing IPA doesn't go out." >&2
+  echo "pre-push: fix the build and push again, or run 'git push --no-verify' to skip this check." >&2
+  exit 1
+fi
+
+if git diff --quiet -- builds/Jellyfin.ipa; then
+  echo "pre-push: IPA unchanged, nothing to commit."
+  exit 0
+fi
+
+git add builds/Jellyfin.ipa
+git commit --no-verify -m "Auto-update built IPA
+
+Rebuilt by scripts/git-hooks/pre-push because Jellyfin/ changed.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+
+echo "pre-push: committed refreshed builds/Jellyfin.ipa — it will be included in this push."
+exit 0
