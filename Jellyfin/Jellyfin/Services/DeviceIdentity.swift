@@ -60,6 +60,30 @@ final class DeviceIdentity {
         #endif
     }
 
+    /// This device's real, user-assigned name recovered via Bonjour (see
+    /// LocalDeviceNameResolver), if resolution has succeeded this session.
+    /// `deviceName`/`UIDevice.current.name` is gated by Apple and normally
+    /// just returns "Apple TV", so this is what actually distinguishes one
+    /// unit from another when reported to the server. `nil` until
+    /// `refreshLocalName()` resolves it (or if it never does — an unattended
+    /// unit whose Local Network permission prompt nobody has answered, for
+    /// instance); callers should treat that as "nothing better available."
+    private(set) var localName: String?
+
+    /// Kicks off Bonjour resolution in the background and caches the result
+    /// for the rest of this process's lifetime. Safe to call repeatedly
+    /// (e.g. once per app launch) — a no-op once `localName` is already set,
+    /// and a bounded, always-completing best-effort attempt otherwise (see
+    /// LocalDeviceNameResolver's own doc comment for why this can't be
+    /// guaranteed to succeed).
+    func refreshLocalName() {
+        guard localName == nil else { return }
+        Task { [weak self] in
+            guard let name = await LocalDeviceNameResolver.resolve() else { return }
+            self?.localName = name
+        }
+    }
+
     var tvosVersion: String {
         #if canImport(UIKit)
         return UIDevice.current.systemVersion

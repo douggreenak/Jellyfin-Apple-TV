@@ -109,8 +109,38 @@ const afterMatch = await j(r);
 check("heartbeat refreshed status.appVersion", afterMatch.status.appVersion === "1.0 (99)");
 check("matching version -> current", afterMatch.appVersionStatus === "current");
 
-console.log("9. Cleanup: delete unit");
+console.log("9. Real name via Bonjour (localName)");
+// unitId's displayName is "Room 101 TV" by now (step 3's PUT config) — an
+// admin-set (non-generic) name must never be overwritten by a device's
+// self-reported localName, only the telemetry hint should update.
+r = await fetch(`${BASE}/devices/${unitId}/heartbeat`, { method: "POST", headers: dh, body: JSON.stringify({ localName: "Fellowship Hall" }) });
+check("heartbeat with localName ok", (await j(r)).ok === true);
+r = await fetch(`${BASE}/admin/units/${unitId}`, { headers: ah });
+const protectedUnit = await j(r);
+check("custom displayName NOT overwritten", protectedUnit.displayName === "Room 101 TV", protectedUnit.displayName);
+check("localNetworkName recorded as telemetry anyway", protectedUnit.status.localNetworkName === "Fellowship Hall");
+
+// A unit that registered as the literal generic placeholder (what
+// UIDevice.current.name actually returns without Apple's gated entitlement)
+// IS safe to auto-rename from its first resolved localName.
+const genericUnitId = "smoke-generic-" + Math.floor(Date.now() % 1e9);
+r = await fetch(`${BASE}/devices/register`, {
+  method: "POST", headers: { "content-type": "application/json" },
+  body: JSON.stringify({ unitId: genericUnitId, deviceName: "Apple TV" }),
+});
+check("generic-name register ok", r.status === 200 || r.status === 201, `got ${r.status}`);
+const genericToken = (await j(r)).token;
+const gh = { "X-Unit-Id": genericUnitId, "X-Unit-Token": genericToken, "content-type": "application/json" };
+r = await fetch(`${BASE}/devices/${genericUnitId}/heartbeat`, { method: "POST", headers: gh, body: JSON.stringify({ localName: "Sanctuary" }) });
+check("heartbeat with localName ok (generic unit)", (await j(r)).ok === true);
+r = await fetch(`${BASE}/admin/units/${genericUnitId}`, { headers: ah });
+const adopted = await j(r);
+check("generic \"Apple TV\" name auto-adopted", adopted.displayName === "Sanctuary", adopted.displayName);
+
+console.log("10. Cleanup: delete units");
 r = await fetch(`${BASE}/admin/units/${unitId}`, { method: "DELETE", headers: ah });
 check("delete ok", (await j(r)).ok === true);
+r = await fetch(`${BASE}/admin/units/${genericUnitId}`, { method: "DELETE", headers: ah });
+check("delete ok (generic unit)", (await j(r)).ok === true);
 
 console.log(`\nALL ${passed} CHECKS PASSED ✅`);

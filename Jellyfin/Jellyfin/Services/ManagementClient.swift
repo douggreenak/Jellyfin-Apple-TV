@@ -68,6 +68,13 @@ struct HeartbeatRequest: Encodable {
     /// app update (pushed via MDM), so it never re-registers, and register is the
     /// only other place this is reported.
     var appVersion: String?
+    /// This device's real name recovered via Bonjour (DeviceIdentity.localName),
+    /// once/if LocalDeviceNameResolver has resolved it. Absent (not just nil) on
+    /// heartbeats sent before resolution succeeds, or if it never does — the
+    /// server only auto-adopts a unit's display name from this while that name is
+    /// still the generic placeholder, so an absent value here just means "no
+    /// change," never "clear the name."
+    var localName: String?
 
     struct NowPlaying: Encodable {
         let title: String
@@ -75,7 +82,7 @@ struct HeartbeatRequest: Encodable {
         let positionTicks: Int64
     }
 
-    enum CodingKeys: String, CodingKey { case ipAddress, nowPlaying, lastError, appVersion }
+    enum CodingKeys: String, CodingKey { case ipAddress, nowPlaying, lastError, appVersion, localName }
 
     /// `nowPlaying` and `lastError` are *always* encoded (as `null` when absent),
     /// so each heartbeat reports the unit's current status. That lets the server
@@ -87,6 +94,7 @@ struct HeartbeatRequest: Encodable {
         try c.encode(nowPlaying, forKey: .nowPlaying)
         try c.encode(lastError, forKey: .lastError)
         try c.encodeIfPresent(appVersion, forKey: .appVersion)
+        try c.encodeIfPresent(localName, forKey: .localName)
     }
 }
 
@@ -176,8 +184,9 @@ final class ManagementClient {
     func heartbeat(ipAddress: String? = nil, nowPlaying: HeartbeatRequest.NowPlaying? = nil, lastError: String? = nil) async throws -> HeartbeatResponse {
         // appVersion rides on every heartbeat (not just register) so the server
         // notices an app update even though the unit keeps its device token —
-        // see HeartbeatRequest.appVersion.
-        let payload = HeartbeatRequest(ipAddress: ipAddress, nowPlaying: nowPlaying, lastError: lastError, appVersion: identity.appVersion)
+        // see HeartbeatRequest.appVersion. localName rides along too, once/if
+        // Bonjour resolution has found it (see HeartbeatRequest.localName).
+        let payload = HeartbeatRequest(ipAddress: ipAddress, nowPlaying: nowPlaying, lastError: lastError, appVersion: identity.appVersion, localName: identity.localName)
         let body = try encoder.encode(payload)
         guard let request = request("devices/\(identity.unitId)/heartbeat", method: "POST", body: body) else {
             throw ManagementError.badURL

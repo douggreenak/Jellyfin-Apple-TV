@@ -328,6 +328,12 @@ function GeneralTab({
 }: GeneralTabProps) {
   const { status } = unit;
 
+  // Only worth a row once resolved and different from the current display
+  // name — the common case is it already got auto-adopted into displayName
+  // (see routes/devices.ts), so showing it again here would be redundant.
+  const showNetworkName =
+    !!status.localNetworkName && status.localNetworkName !== displayName;
+
   const rows: Array<{ label: string; value: string }> = [
     { label: 'Status', value: status.online ? 'Online' : 'Offline' },
     {
@@ -336,6 +342,9 @@ function GeneralTab({
     },
     { label: 'Model', value: status.model ?? '—' },
     { label: 'tvOS', value: status.tvosVersion ?? '—' },
+    ...(showNetworkName
+      ? [{ label: 'Network name', value: `${status.localNetworkName} (not in use — renamed below)` }]
+      : []),
     {
       label: 'App version',
       value:

@@ -22,6 +22,17 @@ export interface UnitStatus {
   ipAddress: string | null;
   nowPlaying: Record<string, unknown> | null;
   lastError: string | null;
+  /**
+   * This unit's real name as recovered client-side via Bonjour (see
+   * routes/devices.ts's heartbeat handler and the tvOS app's
+   * LocalDeviceNameResolver) — UIDevice.current.name is gated by Apple and
+   * just returns "Apple TV" to third-party apps. Purely informational unless
+   * `displayName` is still that exact generic placeholder, in which case the
+   * heartbeat handler auto-adopts this into `displayName` too. `null`/absent
+   * until resolution succeeds, which isn't guaranteed (see the resolver's own
+   * doc comment) — rows written before this field existed simply lack the key.
+   */
+  localNetworkName?: string | null;
 }
 
 /** A fresh, blank status (used for newly registered or imported units). */
@@ -35,6 +46,7 @@ export function emptyStatus(): UnitStatus {
     ipAddress: null,
     nowPlaying: null,
     lastError: null,
+    localNetworkName: null,
   };
 }
 

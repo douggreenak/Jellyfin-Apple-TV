@@ -89,6 +89,10 @@ final class AppModel {
     // MARK: - Lifecycle
 
     func start() async {
+        // Best-effort, runs in the background: recovers this unit's real name via
+        // Bonjour (UIDevice.current.name is gated by Apple and just says "Apple
+        // TV"). Once resolved it rides every heartbeat — see ManagementClient.
+        identity.refreshLocalName()
         await refreshFromServer(initial: true)
         startLoop()
         startLiveLoop()

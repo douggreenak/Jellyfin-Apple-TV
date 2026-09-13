@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	Merged into the auto-generated Info.plist (GENERATE_INFOPLIST_FILE = YES,
+	INFOPLIST_FILE = this file — Xcode combines the two; this one wins on
+	overlapping keys). Only here because NSBonjourServices is an array, which
+	INFOPLIST_KEY_* build settings can't express.
+
+	Backs LocalDeviceNameResolver: UIDevice.current.name is gated by Apple
+	(tvOS 16+) and returns the generic "Apple TV" to third-party apps without
+	a special entitlement. These are the standard services every Apple TV
+	already broadcasts with its real, user-assigned name as the Bonjour
+	instance name — browsing them (with the ordinary Local Network
+	permission, not the gated device-name entitlement) recovers it.
+	-->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_companion-link._tcp.</string>
+		<string>_airplay._tcp.</string>
+		<string>_rdlink._tcp.</string>
+		<string>_sleep-proxy._udp.</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Jellyfin looks for this Apple TV's own network broadcast to learn its real name, so the management dashboard can label it correctly instead of just "Apple TV".</string>
+</dict>
+</plist>

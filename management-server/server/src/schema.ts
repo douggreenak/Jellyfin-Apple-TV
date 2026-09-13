@@ -111,6 +111,10 @@ export const heartbeatSchema = z
     // Sent on every heartbeat (not just register) so the server's view of what a
     // unit is running never goes stale across an app update pushed via MDM.
     appVersion: z.string().optional(),
+    // This unit's real name, recovered client-side via Bonjour (UIDevice.current.name
+    // is gated by Apple and just returns "Apple TV"). Absent until/unless the device
+    // resolves it; see routes/devices.ts for how this feeds displayName.
+    localName: z.string().optional(),
   })
   .strict();
 

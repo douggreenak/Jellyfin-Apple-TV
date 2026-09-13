@@ -29,6 +29,15 @@ import { isLive, storeFrame } from "../liveScreen";
 export const devicesRouter = Router();
 
 /**
+ * Exactly what UIDevice.current.name returns to a third-party tvOS app
+ * without Apple's gated user-assigned-device-name entitlement — every unit
+ * registers with this as its seed displayName. Used as the "has this unit
+ * ever been given a real name" check for heartbeat's localName auto-adopt:
+ * an exact match means it hasn't, so it's always safe to overwrite.
+ */
+const GENERIC_DEVICE_NAME = "Apple TV";
+
+/**
  * POST /devices/register
  * Idempotent on unitId. New unit -> deep-clone defaults template, set
  * unitId+displayName(deviceName). Re-register -> keep config, refresh status,
@@ -206,7 +215,19 @@ devicesRouter.post(
     // of only at register, or the server's view of it would go stale forever.
     if (parsed.data.appVersion !== undefined) status.appVersion = parsed.data.appVersion;
 
-    const updated: UnitRow = { ...row, status: JSON.stringify(status) };
+    // localName is the unit's real name, recovered client-side over Bonjour
+    // (UIDevice.current.name is gated by Apple and just says "Apple TV" — see
+    // DeviceIdentity.swift / LocalDeviceNameResolver.swift). Always recorded as
+    // telemetry; auto-adopted into the operator-facing displayName only while
+    // that's still the exact generic placeholder every unit registers with, so
+    // an admin who has already renamed a unit never gets overwritten.
+    let displayName = row.displayName;
+    if (parsed.data.localName) {
+      status.localNetworkName = parsed.data.localName;
+      if (displayName === GENERIC_DEVICE_NAME) displayName = parsed.data.localName;
+    }
+
+    const updated: UnitRow = { ...row, displayName, status: JSON.stringify(status) };
     updateUnitRow(updated);
 
     const command: PendingCommand | null = row.pendingCommand

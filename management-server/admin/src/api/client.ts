@@ -98,6 +98,13 @@ export interface UnitStatus {
   ipAddress?: string | null;
   nowPlaying?: NowPlaying | null;
   lastError?: string | null;
+  /**
+   * This unit's real name, recovered client-side via Bonjour (UIDevice.current.name
+   * is gated by Apple and just reports "Apple TV"). Auto-adopted into displayName
+   * while that's still the generic placeholder; shown here mainly for units already
+   * renamed to something else, so the operator can still see/reuse the real name.
+   */
+  localNetworkName?: string | null;
 }
 
 export interface PendingCommand {

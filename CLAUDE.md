@@ -33,7 +33,12 @@ A centrally‑managed **Apple TV** Jellyfin client for playing media on a fleet 
   ```
   Bundle id `com.douggreenak.proremote.Jellyfin`. The project uses a
   `PBXFileSystemSynchronizedRootGroup`, so new `.swift` files under `Jellyfin/Jellyfin/` are
-  auto‑included — no pbxproj edits needed.
+  auto‑included — no pbxproj edits needed. **A file literally named `Info.plist` does NOT
+  belong under `Jellyfin/Jellyfin/`** for the same reason: Xcode auto‑adds it to Copy Bundle
+  Resources too, conflicting with the auto‑generated one ("Multiple commands produce ...
+  Info.plist"). The project already merges one in from `Jellyfin/Support/Info.plist` (a
+  sibling, outside the synced folder) via `INFOPLIST_FILE` + `GENERATE_INFOPLIST_FILE = YES` —
+  add new keys there, don't create another Info.plist inside `Jellyfin/Jellyfin/`.
 - **The live SourceKit "Cannot find type X" / "card unavailable in macOS" diagnostics are FALSE.**
   `SDKROOT = auto` makes the indexer use the macOS SDK. Trust `xcodebuild -sdk appletvsimulator`,
   not the editor squiggles.
@@ -76,14 +81,22 @@ no DRM — it's tvOS's own output‑protection policy for wide‑gamut video.
 
 ## Server ↔ device contract
 - Device endpoints: `register`, `GET/PUT config`, `heartbeat`, `ack`. Admin endpoints under
-  `/admin`. Heartbeat (~30s) returns `{ok, configVersion, command}`; the device applies config
-  changes (soft‑reconnect, never tearing down the UI) and runs commands (`reload`/`identify`/
+  `/admin`. Heartbeat (~3s — `AppModel.heartbeatInterval`, tuned tight since the fleet is one
+  LAN) returns `{ok, configVersion, command}`; the device applies config changes
+  (soft‑reconnect, never tearing down the UI) and runs commands (`reload`/`identify`/
   `restart`/`migrate`).
 - **Adoption**: a new device registers `adopted:false` ("ready to adopt"); `POST /admin/units/:id/adopt`
   applies the defaults template (shared Jellyfin account) and marks it adopted.
 - **Move to new server**: a `migrate` command carries the new management base URL (`command.data`);
   the device re‑points its `managementBaseURL` and reconnects with its existing identity (so the
   new server, with the migrated DB, recognizes it — no re‑adoption).
+- **Device names are generic, not real**: `UIDevice.current.name` is gated by Apple (tvOS 16+)
+  and returns the literal string `"Apple TV"` to any app without the special
+  `com.apple.developer.device-information.user-assigned-device-name` entitlement (a formal
+  Apple application, not something code can get around directly). `LocalDeviceNameResolver`
+  recovers the real name via Bonjour instead — see `docs/ARCHITECTURE.md` §2, "Real device
+  names via Bonjour" — which needs the ordinary Local Network permission
+  (`Jellyfin/Support/Info.plist`), not the gated entitlement.
 
 ## Conventions
 - SwiftUI, Swift 5 mode, `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` (types are MainActor‑isolated

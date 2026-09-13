@@ -62,11 +62,12 @@ JSON Schema lives in [`UNIT_CONFIG_SCHEMA.json`](./UNIT_CONFIG_SCHEMA.json). Sum
 
 A server-side **`Unit`** record wraps the config with telemetry (see schema): `status.online`,
 `status.lastSeenAt`, `appVersion`, `tvosVersion`, `model`, `ipAddress`, `nowPlaying`,
-`pendingCommand`, `registeredAt`, **`adopted`** — `false` until an admin adopts the device
-(a freshly-registered unit shows up as "ready to adopt" in the dashboard) — and
-**`powerConfigured`**, whether this unit has been paired for Apple TV remote control/power
-(§2, "Remote control & power"). It also carries a computed **`appVersionStatus`**
-(`"current" | "outdated" | "unknown"`) — see §2, "App version tracking".
+`status.localNetworkName` (§2, "Real device names via Bonjour"), `pendingCommand`,
+`registeredAt`, **`adopted`** — `false` until an admin adopts the device (a freshly-registered
+unit shows up as "ready to adopt" in the dashboard) — and **`powerConfigured`**, whether this
+unit has been paired for Apple TV remote control/power (§2, "Remote control & power"). It also
+carries a computed **`appVersionStatus`** (`"current" | "outdated" | "unknown"`) — see §2, "App
+version tracking".
 
 `status.appVersion` is `"<marketing> (<build>)"`, e.g. `"1.0 (42)"` — `scripts/build-ipa.sh`
 stamps a fresh, monotonically-increasing build number (git commit count) into every Ad Hoc
@@ -88,7 +89,7 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `POST /devices/register` | `{ unitId, deviceName, model, tvosVersion, appVersion }` | `{ unit, token }` | First contact. Server creates the unit from the **defaults template**, issues a device token. Idempotent on `unitId`. |
 | `GET /devices/:unitId/config` | — | `UnitConfig` | Device fetches its config. Supports `ETag`/`If-None-Match` → `304`. |
 | `PUT /devices/:unitId/config` | full `UnitConfig` | `UnitConfig` | Device pushes a local settings edit back to the server (`unitId`/`configVersion`/`updatedAt` are server-owned and always overwritten). Currently unused — no on-device settings UI writes to it today. |
-| `POST /devices/:unitId/heartbeat` | `{ ipAddress, nowPlaying, lastError, appVersion }` | `{ ok, configVersion, command }` | Every ~3 s (the fleet is one LAN — see `AppModel.heartbeatInterval`). Updates `lastSeenAt` and (when present) `status.appVersion`; returns current `configVersion` (device re-fetches config if it changed) and any pending `command`. |
+| `POST /devices/:unitId/heartbeat` | `{ ipAddress, nowPlaying, lastError, appVersion, localName }` | `{ ok, configVersion, command }` | Every ~3 s (the fleet is one LAN — see `AppModel.heartbeatInterval`). Updates `lastSeenAt` and (when present) `status.appVersion`/`status.localNetworkName` — the latter also renames the unit if its `displayName` is still the generic "Apple TV" placeholder, see "Real device names via Bonjour" below. Returns current `configVersion` (device re-fetches config if it changed) and any pending `command`. |
 | `POST /devices/:unitId/ack` | `{ commandId }` | `{ ok }` | Device acknowledges a command it executed. |
 | `GET /devices/:unitId/live` | — | `{ screenShare }` | Cheap poll (every few seconds) telling the device whether a dashboard operator has its screen mirror open right now. |
 | `POST /devices/:unitId/screenshot` | raw `image/jpeg` (not JSON) | `{ ok }` | Uploads one captured screen frame while `screenShare` is true. In-memory only on the server — only the latest frame per unit is kept. |
@@ -167,6 +168,29 @@ ordering to parse, just "is this the exact build we most recently cut." The Unit
 badges outdated units; `scripts/build-ipa.sh` prints the exact string to paste into Defaults
 after every build.
 
+### Real device names via Bonjour
+
+Every new unit registers with `deviceName` = `UIDevice.current.name` as its seed `displayName` —
+but since tvOS 16, Apple gates that API: without a special, formally-applied-for entitlement
+(`com.apple.developer.device-information.user-assigned-device-name`), it returns the generic
+model name, literally `"Apple TV"`, to every third-party app. So every fresh unit's card would
+otherwise say the same generic string forever.
+
+Workaround (`LocalDeviceNameResolver.swift`): every Apple device also broadcasts its real name as
+the Bonjour *instance name* of standard services it already advertises (AirPlay, Companion Link,
+sleep proxy, remote-control link). The tvOS app browses those (needs the ordinary Local Network
+permission — `NSLocalNetworkUsageDescription`/`NSBonjourServices` in `Support/Info.plist`, **not**
+the gated entitlement), matches the record whose address is one of its own local IPs, and sends
+the result as `localName` on every heartbeat once resolved. Best-effort, not guaranteed: an
+unattended unit whose Local Network permission prompt nobody has answered just keeps failing
+resolution gracefully (falls back to the generic name, nothing breaks).
+
+The heartbeat handler always records this as `status.localNetworkName` (telemetry), and — only
+while `displayName` is still the exact literal `"Apple TV"` placeholder — auto-adopts it into
+`displayName` too, which is what the dashboard cards actually show as the title. An admin who has
+already renamed a unit to anything else never gets overwritten; the resolved name still shows up
+in Unit Detail's telemetry as a hint in that case.
+
 ---
 
 ## 3. Jellyfin REST endpoints the app uses
@@ -208,6 +232,7 @@ Jellyfin/
     ManagementClient.swift   register / fetchConfig / heartbeat / ack / live-status poll / screenshot upload
     JellyfinClient.swift     auth / views / items / images / HLS playback URL / playback reporting
     ScreenCaptureService.swift  snapshots the app's own window to JPEG for the dashboard's live screen mirror
+    LocalDeviceNameResolver.swift  recovers the unit's real name via Bonjour (§2, "Real device names")
   DesignSystem/
     Theme.swift              colors, metrics, gradients (driven by the server's accentColorHex)
     CachedAsyncImage.swift   in-memory image cache + fade-in (avoids AsyncImage's re-fetch-on-rerender)
@@ -219,6 +244,14 @@ Jellyfin/
     PlayerView.swift         AVPlayer — starts paused on the first frame, resumes from saved position,
                              reports start/stop to Jellyfin + the management server
 ```
+
+`Jellyfin/Support/Info.plist` (a sibling of `Jellyfin/Jellyfin/`, deliberately **outside** it) supplies
+`NSBonjourServices`/`NSLocalNetworkUsageDescription` for `LocalDeviceNameResolver`, merged into the
+otherwise auto-generated Info.plist via `INFOPLIST_FILE` alongside `GENERATE_INFOPLIST_FILE = YES`.
+It has to live outside `Jellyfin/Jellyfin/` — that folder is a `PBXFileSystemSynchronizedRootGroup`
+(everything under it auto-joins the target), and a file literally named `Info.plist` inside it gets
+auto-added to Copy Bundle Resources too, conflicting with the merge step ("Multiple commands
+produce ... Info.plist").
 
 **The device is a pure managed appliance and a folder browser only.** There is no on-device
 configuration and no local cache: every launch must reach the management server to obtain its

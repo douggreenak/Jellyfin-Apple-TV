@@ -89,7 +89,11 @@
                 "positionTicks": { "type": "number" }
               }
             },
-            "lastError": { "type": ["string", "null"] }
+            "lastError": { "type": ["string", "null"] },
+            "localNetworkName": {
+              "type": ["string", "null"],
+              "description": "This unit's real name, recovered client-side via Bonjour since UIDevice.current.name is gated by Apple (tvOS 16+) and returns the generic \"Apple TV\" to third-party apps. Reported on heartbeat once/if resolved; auto-adopted into displayName only while displayName is still that exact generic placeholder."
+            }
           }
         },
         "pendingCommand": {
