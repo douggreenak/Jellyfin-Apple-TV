@@ -69,15 +69,28 @@ A centrally‑managed **Apple TV** Jellyfin client for playing media on a fleet 
 
 ## Playback (important)
 Apple devices have **no MPEG‑2 decoder** and limited codec support; much real‑world content
-(DVD‑sourced, etc.) is MPEG‑2. **Always play via Jellyfin's adaptive HLS** (`/Videos/{id}/master.m3u8`
-with `videoCodec=h264,hevc`), which direct‑streams compatible codecs and transcodes the rest.
+(DVD‑sourced, etc.) is MPEG‑2. **Always play via Jellyfin's adaptive HLS** (`/Videos/{id}/master.m3u8`).
 Do **not** use static direct‑play (`stream?static=true`) — it silently fails on MPEG‑2.
 
-**Always force SDR / 8‑bit** too (`videoRangeType=SDR&maxVideoBitDepth=8`): an HDR10/Dolby Vision
-source (common in 4K rips) is otherwise direct‑streamed as 10‑bit HEVC — still an "allowed" codec —
-and tvOS silently refuses to render that video layer. Symptom: audio plays fine, the transport
-scrub bar keeps advancing, picture is just black. Not a DRM/licensing issue — this content carries
-no DRM — it's tvOS's own output‑protection policy for wide‑gamut video.
+**`videoCodec` must be `h264` only — never add `hevc` back.** tvOS can decode HEVC fine, so it's
+tempting to allow it for efficiency, but this client builds the HLS URL by hand instead of going
+through Jellyfin's `/PlaybackInfo` negotiation (where a real `DeviceProfile` could declare "no
+10‑bit/HDR HEVC"). On the plain `master.m3u8` endpoint, the codec allow‑list is the only
+direct‑play/direct‑stream rejection rule that's reliably enforced — `videoRangeType=SDR` and
+`maxVideoBitDepth=8` (still sent, and still worth keeping) are **not** honored as rejection reasons
+there. Allow `hevc` and an HDR10/Dolby Vision source (common in 4K rips) gets direct‑streamed as
+10‑bit HEVC — still an "allowed" codec — and tvOS refuses to render that video layer. Symptom:
+audio plays fine, the transport scrub bar keeps advancing, and tvOS overlays a "restricted content"
+badge (circle with a diagonal slash) on the black picture. Not a DRM/licensing issue — this content
+carries no DRM — it's tvOS's own output‑protection policy for wide‑gamut video it won't display.
+Restricting to `h264` forces Jellyfin to transcode every non‑H.264 source, and ffmpeg's H.264
+encoder only ever produces 8‑bit SDR — closing the loophole by construction, not by hint. This
+costs transcode CPU on sources that were already safe 8‑bit HEVC; that's the right trade for a
+managed fleet where reliability beats efficiency.
+
+Note: this specific black‑screen‑plus‑badge symptom can't be reproduced in the tvOS Simulator —
+Simulator doesn't do real HDMI/HDCP output negotiation, so it never shows the restricted‑content
+overlay regardless of source. Verify fixes here on a real Apple TV.
 
 ## Jellyfin auth headers (both clients — tvOS app AND management-server/server/src/jellyfin.ts)
 **Always send both `Authorization` and `X-Emby-Authorization`** with the identical

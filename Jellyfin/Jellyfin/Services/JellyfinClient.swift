@@ -204,23 +204,32 @@ final class JellyfinClient {
     }
 
     /// Playback URL for AVPlayer. Always uses Jellyfin's adaptive HLS: Jellyfin
-    /// remuxes/direct-streams codecs AVPlayer can decode (H.264 / HEVC + AAC / AC3 /
-    /// MP3) and transcodes anything it can't (e.g. MPEG-2, VC-1) to H.264 — so
-    /// playback works regardless of the source format. (Direct static streaming was
-    /// removed because Apple devices have no MPEG-2 decoder, so it silently failed
-    /// on such content.) A bitrate cap, or `preferDirectPlay == false`, bounds the
-    /// streaming bitrate.
+    /// remuxes/direct-streams codecs AVPlayer can decode and transcodes anything it
+    /// can't (e.g. MPEG-2, VC-1, HEVC) to H.264 — so playback works regardless of the
+    /// source format. (Direct static streaming was removed because Apple devices have
+    /// no MPEG-2 decoder, so it silently failed on such content.) A bitrate cap, or
+    /// `preferDirectPlay == false`, bounds the streaming bitrate.
     ///
-    /// Forces 8-bit SDR output (`videoRangeType=SDR`, `maxVideoBitDepth=8`):
-    /// without this, an HDR10/Dolby Vision source (common in 4K rips) gets
-    /// direct-streamed as 10-bit HEVC since `hevc` is an allowed codec, and tvOS
-    /// will silently refuse to render that video layer — audio keeps playing and
-    /// the transport scrub bar keeps advancing, but the picture is just black.
-    /// (Not a DRM/copyright issue — Jellyfin content here carries no DRM; this is
-    /// tvOS's own output-protection policy for wide-gamut/HDR video, independent
-    /// of licensing.) Forcing SDR makes Jellyfin tone-map any HDR source down to
-    /// 8-bit during transcode, trading peak brightness/color range for actually
-    /// having a picture.
+    /// `videoCodec` deliberately lists **only** `h264`, even though tvOS can decode
+    /// HEVC: this client builds the HLS URL by hand instead of going through
+    /// Jellyfin's `/PlaybackInfo` negotiation (which is where a proper `DeviceProfile`
+    /// would declare "no 10-bit/HDR HEVC"), so the codec allow-list is the only
+    /// direct-play/direct-stream rejection rule this simplified `master.m3u8` endpoint
+    /// reliably enforces. `videoRangeType=SDR` + `maxVideoBitDepth=8` alone were NOT
+    /// enough — an HDR10/Dolby Vision source (common in 4K rips) still got
+    /// direct-streamed as 10-bit HEVC because those hints aren't honored as a
+    /// direct-play rejection reason on this endpoint the way the codec list is.
+    /// Symptom when that happens: audio plays fine, the transport scrub bar keeps
+    /// advancing, and tvOS shows a black picture with a "restricted content" (circle
+    /// with a diagonal slash) badge — tvOS's output-protection UI for wide-gamut/HDR
+    /// video it won't render on this output, not a DRM/copyright issue (this content
+    /// carries no DRM). Excluding `hevc` from the allow-list forces Jellyfin to
+    /// transcode every non-H.264 source, and ffmpeg's H.264 encoder only ever
+    /// produces 8-bit SDR output — closing the loophole by construction instead of by
+    /// hint. Costs some transcode CPU on sources that were already safe 8-bit HEVC,
+    /// which is the right trade for a managed fleet where reliability beats
+    /// efficiency. Keep `videoRangeType`/`maxVideoBitDepth` too — harmless if unused,
+    /// still shape the transcode when one does happen.
     func playbackURL(for item: BaseItem, playback: UnitConfig.Playback) -> URL? {
         guard let token = accessToken else { return nil }
         var components = URLComponents(
@@ -231,7 +240,7 @@ final class JellyfinClient {
             URLQueryItem(name: "api_key", value: token),
             URLQueryItem(name: "deviceId", value: deviceId),
             URLQueryItem(name: "mediaSourceId", value: item.id),
-            URLQueryItem(name: "videoCodec", value: "h264,hevc"),
+            URLQueryItem(name: "videoCodec", value: "h264"),
             URLQueryItem(name: "audioCodec", value: "aac,ac3,eac3,mp3"),
             URLQueryItem(name: "transcodingContainer", value: "ts"),
             URLQueryItem(name: "transcodingProtocol", value: "hls"),
