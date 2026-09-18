@@ -35,6 +35,19 @@ export interface JellyfinTestResult {
 const EMBY_AUTH_HEADER =
   'MediaBrowser Client="Jellyfin Admin", Device="admin", DeviceId="admin", Version="1.0"';
 
+/**
+ * Jellyfin 12+ reads the standard `Authorization` header by default and only
+ * falls back to the legacy `X-Emby-Authorization` when the server has
+ * "EnableLegacyAuthorization" turned on — sending only the legacy header gets
+ * a 400 ("request.App" missing) before credentials are even checked. Sending
+ * both covers old and new servers. Confirmed against a live Jellyfin 12.1.0
+ * server: X-Emby-Authorization alone -> 400; adding Authorization -> reaches
+ * normal 401/200 instead.
+ */
+function embyAuthHeaders(): Record<string, string> {
+  return { Authorization: EMBY_AUTH_HEADER, "X-Emby-Authorization": EMBY_AUTH_HEADER };
+}
+
 /** Strip a single trailing slash so we can safely append paths. */
 function normalizeBase(url: string): string {
   return url.replace(/\/+$/, "");
@@ -53,7 +66,7 @@ export async function testJellyfin(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        "X-Emby-Authorization": EMBY_AUTH_HEADER,
+        ...embyAuthHeaders(),
       },
       body: JSON.stringify({ Username: input.username, Pw: input.password }),
     });
@@ -87,7 +100,7 @@ export async function testJellyfin(
       headers: {
         Accept: "application/json",
         "X-Emby-Token": token,
-        "X-Emby-Authorization": EMBY_AUTH_HEADER,
+        ...embyAuthHeaders(),
       },
     });
     if (infoRes.ok) {
@@ -108,7 +121,7 @@ export async function testJellyfin(
         headers: {
           Accept: "application/json",
           "X-Emby-Token": token,
-          "X-Emby-Authorization": EMBY_AUTH_HEADER,
+          ...embyAuthHeaders(),
         },
       }
     );
@@ -162,7 +175,7 @@ async function authenticateSession(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        "X-Emby-Authorization": EMBY_AUTH_HEADER,
+        ...embyAuthHeaders(),
       },
       body: JSON.stringify({ Username: input.username, Pw: input.password }),
     });
@@ -185,7 +198,7 @@ function authHeaders(token: string) {
   return {
     Accept: "application/json",
     "X-Emby-Token": token,
-    "X-Emby-Authorization": EMBY_AUTH_HEADER,
+    ...embyAuthHeaders(),
   };
 }
 

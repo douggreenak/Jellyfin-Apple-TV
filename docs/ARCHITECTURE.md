@@ -216,9 +216,16 @@ in Unit Detail's telemetry as a hint in that case.
 
 ## 3. Jellyfin REST endpoints the app uses
 
-Auth header for all requests:
-`X-Emby-Authorization: MediaBrowser Client="Jellyfin Apple TV", Device="<name>", DeviceId="<unitId>", Version="<appVersion>"`
-After login add `, Token="<accessToken>"`.
+Auth header for all requests — sent as **both** `Authorization` and `X-Emby-Authorization` (same
+value, both headers):
+`MediaBrowser Client="Jellyfin Apple TV", Device="<name>", DeviceId="<unitId>", Version="<appVersion>"`
+After login add `, Token="<accessToken>"`. Jellyfin 12+ reads the standard `Authorization` header
+by default and only honors the legacy `X-Emby-Authorization` when the server has
+"EnableLegacyAuthorization" on — sending only the legacy header gets a 400 on
+`AuthenticateByName` before credentials are even checked (confirmed against a live 12.1.0 server).
+Sending both covers old and new servers; `management-server/server/src/jellyfin.ts` (a separate,
+server-side Jellyfin client used for admin "Test connection" and the folder-lock picker) does the
+same for the same reason.
 
 | Call | Purpose |
 |---|---|
@@ -285,8 +292,14 @@ folders → videos, and tapping a video opens the player directly, paused on the
 unreachable — the app is **blocked** and keeps retrying), and `error(message)`. A background loop
 heartbeats every 3 s when connected (applying config changes and admin commands live — tuned
 tight since the whole fleet is on one LAN; see `AppModel.heartbeatInterval`), retrying every 2 s
-while blocked; if the server disappears it blocks after 3 failed heartbeats (~9 s) and
-auto-recovers when it returns.
+while blocked; if the server disappears it blocks after 8 failed heartbeats (~24 s+) and
+auto-recovers when it returns. That threshold (`AppModel.failuresBeforeBlock`) is deliberately
+generous relative to the fast heartbeat: blocking tears down `BrowseRootView`'s `NavigationStack`
+(RootView's phase switch replaces the whole content view), so a threshold as low as 3 — fine at
+the old 30s heartbeat, ~90s of real silence needed — got tripped by a routine multi-second network
+blip at the new 3s heartbeat (starting video playback is exactly the kind of event that causes
+one: a burst of HLS segment requests to Jellyfin), bouncing the user from the player straight back
+to the library root mid-tap.
 
 ---
 

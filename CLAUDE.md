@@ -79,6 +79,18 @@ and tvOS silently refuses to render that video layer. Symptom: audio plays fine,
 scrub bar keeps advancing, picture is just black. Not a DRM/licensing issue — this content carries
 no DRM — it's tvOS's own output‑protection policy for wide‑gamut video.
 
+## Jellyfin auth headers (both clients — tvOS app AND management-server/server/src/jellyfin.ts)
+**Always send both `Authorization` and `X-Emby-Authorization`** with the identical
+`MediaBrowser Client="...", Device="...", DeviceId="...", Version="..."` value on every Jellyfin
+request. Jellyfin 12+ reads the standard `Authorization` header by default and only falls back to
+the legacy `X-Emby-Authorization` when the server has "EnableLegacyAuthorization" turned on — a
+client sending only the legacy header gets a `400 Bad Request` / "Error processing request." on
+`Users/AuthenticateByName` (the server can't find `request.App`) *before it ever checks
+credentials* — every login fails regardless of username/password. Confirmed against a live
+Jellyfin 12.1.0 server: `X-Emby-Authorization` alone → 400; adding `Authorization` → normal
+401 (bad creds) / 200 (good creds). Not a DRM/token issue, purely which header the server bothers
+to parse.
+
 ## Server ↔ device contract
 - Device endpoints: `register`, `GET/PUT config`, `heartbeat`, `ack`. Admin endpoints under
   `/admin`. Heartbeat (~3s — `AppModel.heartbeatInterval`, tuned tight since the fleet is one

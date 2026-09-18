@@ -82,7 +82,17 @@ final class JellyfinClient {
         guard let url = components.url else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue(authorizationHeader(), forHTTPHeaderField: "X-Emby-Authorization")
+        // Jellyfin 12+ reads the standard `Authorization` header by default and only
+        // falls back to the legacy `X-Emby-Authorization` when the server has
+        // "EnableLegacyAuthorization" turned on — a client sending only the legacy
+        // header gets back a 400 ("request.App" missing) before credentials are even
+        // checked. Sending both covers old and new servers without needing a
+        // server-side setting. Confirmed against a live Jellyfin 12.1.0 server:
+        // X-Emby-Authorization alone -> 400; adding Authorization -> reaches normal
+        // 401 (bad credentials) / 200 (good ones) instead.
+        let auth = authorizationHeader()
+        request.setValue(auth, forHTTPHeaderField: "Authorization")
+        request.setValue(auth, forHTTPHeaderField: "X-Emby-Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.httpBody = body

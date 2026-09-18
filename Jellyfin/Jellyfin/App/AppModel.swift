@@ -67,7 +67,19 @@ final class AppModel {
     // heartbeatInterval is the main knob for how fast the dashboard feels.
     private let heartbeatInterval: Duration = .seconds(3)
     private let retryInterval: Duration = .seconds(2)
-    private let failuresBeforeBlock = 3
+    // At the old 30s heartbeat, 3 failures meant ~90s of sustained silence
+    // before blocking — long enough that a transient blip never tripped it in
+    // practice. At the new 3s heartbeat, 3 failures is as little as ~9s, and
+    // starting video playback is exactly the kind of event that can cause a
+    // few seconds of network contention (the initial burst of HLS segment
+    // requests) — enough to fail a couple of heartbeats and yank the user back
+    // to the "management server required" screen mid-tap, destroying the
+    // library's navigation stack in the process (RootView's phase switch tears
+    // down BrowseRootView while blocked, then rebuilds it fresh on recovery —
+    // there's no video to return to, just the library root). Raised well above
+    // what a normal few-second blip needs, while still blocking on a genuine
+    // outage far faster than the original 90s.
+    private let failuresBeforeBlock = 8
 
     /// How often to check whether a dashboard operator has this unit's screen
     /// mirror open, while idle (not currently live).
