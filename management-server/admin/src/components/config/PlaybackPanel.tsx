@@ -45,7 +45,10 @@ export default function PlaybackPanel({ value, onChange }: PlaybackPanelProps) {
           onChange={(_, v) => set({ maxBitrateMbps: v as number })}
         />
         <Typography variant="caption" color="text.secondary">
-          0 = unlimited (let Jellyfin decide). Lower this on slow networks.
+          0 = Unlimited — a generous 100 Mbps ceiling, not an unbounded request. Jellyfin's own
+          default when no bitrate is given is conservative and visibly over-compressed, so the
+          app always sends an explicit number. Lower this only if a unit is on a constrained
+          network.
         </Typography>
       </Box>
 

@@ -207,8 +207,21 @@ final class JellyfinClient {
     /// remuxes/direct-streams codecs AVPlayer can decode and transcodes anything it
     /// can't (e.g. MPEG-2, VC-1, HEVC) to H.264 — so playback works regardless of the
     /// source format. (Direct static streaming was removed because Apple devices have
-    /// no MPEG-2 decoder, so it silently failed on such content.) A bitrate cap, or
-    /// `preferDirectPlay == false`, bounds the streaming bitrate.
+    /// no MPEG-2 decoder, so it silently failed on such content.)
+    ///
+    /// **Always sends an explicit `maxStreamingBitrate`, even at the "Unlimited" admin
+    /// setting.** Omitting the param entirely (the old behavior when `maxBitrateMbps`
+    /// was 0 and `preferDirectPlay` was true — i.e. every unit's factory default) lets
+    /// Jellyfin fall back to its own internal default bitrate, which is tuned for
+    /// unknown/constrained networks and is visibly over-compressed — exactly the
+    /// "trash quality" a fleet on one LAN with effectively unlimited bandwidth has no
+    /// reason to accept. "Unlimited" here means a generous fixed ceiling
+    /// (`unlimitedBitrateBps`) well above anything a real source needs, not an actually
+    /// unbounded request — Jellyfin always gets a real number to target instead of
+    /// picking a conservative one on its own. `preferDirectPlay` no longer affects
+    /// this: forcing `h264`-only below already forces a transcode for any non-H.264
+    /// source regardless of that setting, so the same generous ceiling should apply
+    /// whenever a transcode happens, not a separate, lower fallback.
     ///
     /// **The query parameter is `ApiKey`, not `api_key`.** `api_key` is the legacy
     /// Emby-compatibility spelling; Jellyfin 12+ silently returns 401 for it on every
@@ -236,13 +249,22 @@ final class JellyfinClient {
     /// fleet's library is already plain 8-bit H.264) — it forecloses a real HDR/HEVC
     /// failure mode for any future content, at the cost of transcode CPU on sources
     /// that were already safe HEVC, the right trade for a managed fleet.
+    /// 100 Mbps — comfortably above any real-world source's bitrate on a LAN, used
+    /// whenever the admin's "Max bitrate" is left at "Unlimited" (0) so Jellyfin
+    /// always receives an explicit, generous ceiling instead of picking its own
+    /// conservative default.
+    private static let unlimitedBitrateBps = 100_000_000
+
     func playbackURL(for item: BaseItem, playback: UnitConfig.Playback) -> URL? {
         guard let token = accessToken else { return nil }
         var components = URLComponents(
             url: serverURL.appendingPathComponent("Videos/\(item.id)/master.m3u8"),
             resolvingAgainstBaseURL: false
         )
-        var query = [
+        let bitrateBps = playback.maxBitrateMbps > 0
+            ? Int(playback.maxBitrateMbps * 1_000_000)
+            : Self.unlimitedBitrateBps
+        let query = [
             URLQueryItem(name: "ApiKey", value: token),
             URLQueryItem(name: "deviceId", value: deviceId),
             URLQueryItem(name: "mediaSourceId", value: item.id),
@@ -251,13 +273,9 @@ final class JellyfinClient {
             URLQueryItem(name: "transcodingContainer", value: "ts"),
             URLQueryItem(name: "transcodingProtocol", value: "hls"),
             URLQueryItem(name: "videoRangeType", value: "SDR"),
-            URLQueryItem(name: "maxVideoBitDepth", value: "8")
+            URLQueryItem(name: "maxVideoBitDepth", value: "8"),
+            URLQueryItem(name: "maxStreamingBitrate", value: String(bitrateBps))
         ]
-        if playback.maxBitrateMbps > 0 {
-            query.append(URLQueryItem(name: "maxStreamingBitrate", value: String(Int(playback.maxBitrateMbps * 1_000_000))))
-        } else if !playback.preferDirectPlay {
-            query.append(URLQueryItem(name: "maxStreamingBitrate", value: "8000000"))
-        }
         components?.queryItems = query
         return components?.url
     }

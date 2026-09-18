@@ -55,8 +55,8 @@ JSON Schema lives in [`UNIT_CONFIG_SCHEMA.json`](./UNIT_CONFIG_SCHEMA.json). Sum
 | `appearance.showItemTitles` | bool | Titles under posters. |
 | `appearance.posterStyle` | `"poster" \| "thumb" \| "wide"` | Card aspect ratio. |
 | `playback.autoplayNext` | bool | Auto-advance within a folder. |
-| `playback.maxBitrateMbps` | number | `0` = unlimited / direct play. |
-| `playback.preferDirectPlay` | bool | Prefer direct play over transcode. |
+| `playback.maxBitrateMbps` | number | `0` = "Unlimited" in the admin UI, which sends a generous fixed 100 Mbps ceiling (`JellyfinClient.unlimitedBitrateBps`), not an actually unbounded request — see below. |
+| `playback.preferDirectPlay` | bool | Currently has no effect on the playback URL — kept in the schema/UI as a real per-unit setting, but nothing reads it since `videoCodec=h264` (§3) already forces a transcode for any non-H.264 source regardless, and an already-H.264 source direct-plays/remuxes either way. |
 | `configVersion` | integer | Bumped by the server on every change; device polls this. |
 | `updatedAt` | string (ISO-8601) | Last modification time. |
 
@@ -273,6 +273,21 @@ but from tvOS's real output-protection policy rather than an HTTP error — genu
 in the Simulator (no real HDMI/HDCP negotiation there). This fleet's library is currently plain 8-bit
 H.264, so this wasn't the cause of the bug above, but forecloses the same symptom for any future HEVC
 content, at the cost of transcode CPU on sources that were already safe.
+
+`maxStreamingBitrate` is **always** sent explicitly, even at the admin's "Unlimited" (0) setting —
+which maps to a fixed 100 Mbps ceiling (`JellyfinClient.unlimitedBitrateBps`), not an actually
+unbounded request. Omitting the param (the old behavior at the factory-default `maxBitrateMbps: 0`
++ `preferDirectPlay: true`) lets Jellyfin fall back to its own internal default, which is
+conservative and visibly over-compressed — this was the cause of a real "trash quality" complaint.
+Verified live against the real server: an already-H.264 source remuxes/direct-streams at its full
+original bitrate regardless of this param (measured a delivered `.ts` segment at 3.38 Mbps against
+a ~3 Mbps source — direct-stream just copies the stream, bitrate isn't a factor), but any source
+that needs an actual transcode (everything non-H.264, forced by the `videoCodec=h264` restriction
+above) has no such free pass — that's the path a missing bitrate hint actually degrades. The
+manifest's advertised `BANDWIDTH` attribute is not a reliable signal either way: it read a flat
+`256000` regardless of source bitrate or this param in that live test, evidently a cosmetic
+Jellyfin quirk on this endpoint rather than the real delivered rate — measure actual segment
+bytes/duration, not the manifest header, when verifying bitrate changes.
 
 ---
 
