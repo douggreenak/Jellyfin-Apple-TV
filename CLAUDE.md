@@ -72,25 +72,38 @@ Apple devices have **no MPEG‑2 decoder** and limited codec support; much real�
 (DVD‑sourced, etc.) is MPEG‑2. **Always play via Jellyfin's adaptive HLS** (`/Videos/{id}/master.m3u8`).
 Do **not** use static direct‑play (`stream?static=true`) — it silently fails on MPEG‑2.
 
-**`videoCodec` must be `h264` only — never add `hevc` back.** tvOS can decode HEVC fine, so it's
-tempting to allow it for efficiency, but this client builds the HLS URL by hand instead of going
-through Jellyfin's `/PlaybackInfo` negotiation (where a real `DeviceProfile` could declare "no
-10‑bit/HDR HEVC"). On the plain `master.m3u8` endpoint, the codec allow‑list is the only
-direct‑play/direct‑stream rejection rule that's reliably enforced — `videoRangeType=SDR` and
-`maxVideoBitDepth=8` (still sent, and still worth keeping) are **not** honored as rejection reasons
-there. Allow `hevc` and an HDR10/Dolby Vision source (common in 4K rips) gets direct‑streamed as
-10‑bit HEVC — still an "allowed" codec — and tvOS refuses to render that video layer. Symptom:
-audio plays fine, the transport scrub bar keeps advancing, and tvOS overlays a "restricted content"
-badge (circle with a diagonal slash) on the black picture. Not a DRM/licensing issue — this content
-carries no DRM — it's tvOS's own output‑protection policy for wide‑gamut video it won't display.
-Restricting to `h264` forces Jellyfin to transcode every non‑H.264 source, and ffmpeg's H.264
-encoder only ever produces 8‑bit SDR — closing the loophole by construction, not by hint. This
-costs transcode CPU on sources that were already safe 8‑bit HEVC; that's the right trade for a
-managed fleet where reliability beats efficiency.
+**The query parameter is `ApiKey`, not `api_key` — this was the real cause of the "black screen +
+restricted‑content badge" bug, twice diagnosed wrong before this.** `api_key` is the legacy
+Emby‑compatibility spelling (also used for `imageURL`/`image()`); Jellyfin 12+ silently 401s it on
+every endpoint under `/Videos/`, same "legacy Emby shim removed" pattern as the
+`X-Emby-Authorization` header below. `AVPlayer(url:)` can't attach a custom header, so this query
+param is the *only* auth the playback request has — get the name wrong and the manifest 401s,
+AVPlayer's item fails to load, and AVKit's `VideoPlayer` shows its "can't play this content" icon
+(a circle with a diagonal slash) over a black, frozen transport. That looks exactly like an
+HDCP/output‑protection block (and was misdiagnosed as one, including a whole `videoCodec` rewrite
+that didn't fix anything because the library was already plain 8‑bit H.264 — the request was never
+reaching real content at all). **Don't trust reasoning alone here — verify against the live
+server.** `curl` the exact URL `playbackURL()` builds and check for a real `2xx` + a valid
+`#EXTM3U` manifest (a Jellyfin **API key**, Dashboard → API Keys, is enough — no user password
+needed); a full trust-nothing check plays it in the Simulator with a debug hook that bypasses the
+management‑server/login flow and drops the URL straight into `AVKit.VideoPlayer` — this **does**
+work in Simulator despite the HDCP note below, because a wrong query‑param name is a plain HTTP
+401, nothing to do with real display output negotiation.
 
-Note: this specific black‑screen‑plus‑badge symptom can't be reproduced in the tvOS Simulator —
-Simulator doesn't do real HDMI/HDCP output negotiation, so it never shows the restricted‑content
-overlay regardless of source. Verify fixes here on a real Apple TV.
+**`videoCodec` is `h264` only — don't add `hevc` back.** tvOS can decode HEVC fine, so it's tempting
+to allow it for efficiency, but this client builds the HLS URL by hand instead of going through
+Jellyfin's `/PlaybackInfo` negotiation (where a real `DeviceProfile` could declare "no 10‑bit/HDR
+HEVC"). On the plain `master.m3u8` endpoint, the codec allow‑list is the direct‑play/direct‑stream
+rejection rule that's most reliably enforced — `videoRangeType=SDR`/`maxVideoBitDepth=8` are kept as
+best‑effort hints for when a transcode does happen, but excluding `hevc` guarantees one happens for
+any non‑H.264 source, and ffmpeg's H.264 encoder only ever produces 8‑bit SDR. This fleet's current
+library is already plain 8‑bit H.264 (so this wasn't the `ApiKey` bug's cause), but it's still worth
+keeping: an HDR10/Dolby Vision source direct‑streamed as 10‑bit HEVC produces the *exact same*
+symptom (black picture + restricted‑content badge, tvOS's real output‑protection policy this time,
+not a 401) for any future content. Costs transcode CPU on sources that were already safe HEVC — the
+right trade for a managed fleet where reliability beats efficiency. Unlike the `ApiKey` bug, *this*
+specific failure mode genuinely can't be reproduced in the Simulator (no real HDMI/HDCP negotiation
+there) — verify on a real Apple TV if HEVC/HDR content is ever added to the library.
 
 ## Jellyfin auth headers (both clients — tvOS app AND management-server/server/src/jellyfin.ts)
 **Always send both `Authorization` and `X-Emby-Authorization`** with the identical

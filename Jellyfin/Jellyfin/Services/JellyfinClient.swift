@@ -186,7 +186,7 @@ final class JellyfinClient {
             URLQueryItem(name: "quality", value: "90")
         ]
         if let tag { query.append(URLQueryItem(name: "tag", value: tag)) }
-        if let token = accessToken { query.append(URLQueryItem(name: "api_key", value: token)) }
+        if let token = accessToken { query.append(URLQueryItem(name: "ApiKey", value: token)) }
         components?.queryItems = query
         return components?.url
     }
@@ -210,26 +210,32 @@ final class JellyfinClient {
     /// no MPEG-2 decoder, so it silently failed on such content.) A bitrate cap, or
     /// `preferDirectPlay == false`, bounds the streaming bitrate.
     ///
-    /// `videoCodec` deliberately lists **only** `h264`, even though tvOS can decode
-    /// HEVC: this client builds the HLS URL by hand instead of going through
-    /// Jellyfin's `/PlaybackInfo` negotiation (which is where a proper `DeviceProfile`
-    /// would declare "no 10-bit/HDR HEVC"), so the codec allow-list is the only
-    /// direct-play/direct-stream rejection rule this simplified `master.m3u8` endpoint
-    /// reliably enforces. `videoRangeType=SDR` + `maxVideoBitDepth=8` alone were NOT
-    /// enough — an HDR10/Dolby Vision source (common in 4K rips) still got
-    /// direct-streamed as 10-bit HEVC because those hints aren't honored as a
-    /// direct-play rejection reason on this endpoint the way the codec list is.
-    /// Symptom when that happens: audio plays fine, the transport scrub bar keeps
-    /// advancing, and tvOS shows a black picture with a "restricted content" (circle
-    /// with a diagonal slash) badge — tvOS's output-protection UI for wide-gamut/HDR
-    /// video it won't render on this output, not a DRM/copyright issue (this content
-    /// carries no DRM). Excluding `hevc` from the allow-list forces Jellyfin to
-    /// transcode every non-H.264 source, and ffmpeg's H.264 encoder only ever
-    /// produces 8-bit SDR output — closing the loophole by construction instead of by
-    /// hint. Costs some transcode CPU on sources that were already safe 8-bit HEVC,
-    /// which is the right trade for a managed fleet where reliability beats
-    /// efficiency. Keep `videoRangeType`/`maxVideoBitDepth` too — harmless if unused,
-    /// still shape the transcode when one does happen.
+    /// **The query parameter is `ApiKey`, not `api_key`.** `api_key` is the legacy
+    /// Emby-compatibility spelling; Jellyfin 12+ silently returns 401 for it on every
+    /// endpoint under `/Videos/`, including this one — same "legacy Emby shim removed"
+    /// pattern as the `X-Emby-Authorization` header (see the auth-header note in
+    /// `makeRequest`). `AVPlayer(url:)` has no way to attach a custom header, so the
+    /// query parameter is the *only* auth this request has — get the name wrong and
+    /// the manifest request 401s outright, AVPlayer's item fails to load, and AVKit's
+    /// `VideoPlayer` shows its "can't play this content" icon (a circle with a
+    /// diagonal slash) over a black, frozen transport — which looks exactly like an
+    /// HDCP/output-protection block but isn't. Confirmed against a live Jellyfin
+    /// 12.1.0 server end to end: `api_key` → 401 on `master.m3u8`; `ApiKey` → 200,
+    /// and the resulting manifest/segment URLs (which Jellyfin itself generates,
+    /// carrying the same `ApiKey` param forward) resolve to real `video/mp2t` bytes.
+    ///
+    /// `videoCodec` lists **only** `h264`, even though tvOS can decode HEVC: this
+    /// client builds the HLS URL by hand instead of going through Jellyfin's
+    /// `/PlaybackInfo` negotiation (where a proper `DeviceProfile` could declare "no
+    /// 10-bit/HDR HEVC"), so the codec allow-list is the direct-play/direct-stream
+    /// rejection rule this simplified `master.m3u8` endpoint most reliably enforces —
+    /// `videoRangeType=SDR` + `maxVideoBitDepth=8` are kept as best-effort hints for
+    /// when a transcode does happen, but excluding `hevc` guarantees one happens for
+    /// any non-H.264 source, and ffmpeg's H.264 encoder only ever produces 8-bit SDR.
+    /// Worth keeping even though it wasn't the cause of the `ApiKey` bug above (this
+    /// fleet's library is already plain 8-bit H.264) — it forecloses a real HDR/HEVC
+    /// failure mode for any future content, at the cost of transcode CPU on sources
+    /// that were already safe HEVC, the right trade for a managed fleet.
     func playbackURL(for item: BaseItem, playback: UnitConfig.Playback) -> URL? {
         guard let token = accessToken else { return nil }
         var components = URLComponents(
@@ -237,7 +243,7 @@ final class JellyfinClient {
             resolvingAgainstBaseURL: false
         )
         var query = [
-            URLQueryItem(name: "api_key", value: token),
+            URLQueryItem(name: "ApiKey", value: token),
             URLQueryItem(name: "deviceId", value: deviceId),
             URLQueryItem(name: "mediaSourceId", value: item.id),
             URLQueryItem(name: "videoCodec", value: "h264"),
@@ -376,7 +382,7 @@ extension JellyfinClient {
         ]
         if let fillWidth { query.append(URLQueryItem(name: "fillWidth", value: String(fillWidth))) }
         if let fillHeight { query.append(URLQueryItem(name: "fillHeight", value: String(fillHeight))) }
-        if let token = accessToken { query.append(URLQueryItem(name: "api_key", value: token)) }
+        if let token = accessToken { query.append(URLQueryItem(name: "ApiKey", value: token)) }
         components?.queryItems = query
         return components?.url
     }
