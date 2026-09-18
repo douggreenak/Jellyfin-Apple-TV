@@ -164,14 +164,26 @@ MDM app updates), so it instead tracks what units are actually running and flags
 — entirely automatically, with **no admin-editable setting anywhere in the dashboard**. Every
 push that touches `Jellyfin/` runs `scripts/build-ipa.sh` (via the `pre-push` git hook), which
 writes `management-server/server/latest-app-version.json` (`{ version, generatedAt }`) alongside
-the IPA and commits it — the deployed server just reads that file (see `appVersion.ts`, cached by
-mtime) and picks up the new value on its next `git pull` + restart, same as any other source
-change. Each unit's real version arrives via register + every heartbeat (never stale, even across
-an app update — see §1), and `appVersionStatus` on each `Unit` — `"current"`, `"outdated"`, or
-`"unknown"` (no build has ever been pushed since this feature shipped, or the unit hasn't reported
-one) — is a straight string-equality check: `status.appVersion` already encodes an
-always-increasing build number, so there's no ordering to parse, just "is this the exact build we
-most recently cut." The Units dashboard badges outdated units.
+the IPA and commits it.
+
+The deployed server's own "latest version" comes from **GitHub, not its local checkout**:
+`appVersion.ts` polls `latest-app-version.json` straight off the `main` branch on
+`raw.githubusercontent.com` every 10 minutes (plus once at startup — `startAppVersionPolling()`,
+called from `index.ts`), and that GitHub-sourced value takes priority whenever it's available. The
+local file is only a fallback for right after process start (before the first poll lands) or if
+GitHub can't be reached at all. This matters because nothing here auto-deploys: a `git pull` +
+restart on the production box is a manual step, and without the GitHub check, any deployment that
+lags even one push behind would have a stale local file — meaning the dashboard would flag every
+unit that picked up the real latest IPA (via Mosyle) as "outdated" forever, even though it's
+actually current. Polling the repo directly makes "latest" mean what was actually pushed,
+independent of when this particular server process last redeployed.
+
+Each unit's real version arrives via register + every heartbeat (never stale, even across an app
+update — see §1), and `appVersionStatus` on each `Unit` — `"current"`, `"outdated"`, or `"unknown"`
+(neither source has a version yet, or the unit hasn't reported one) — is a straight string-equality
+check: `status.appVersion` already encodes an always-increasing build number, so there's no
+ordering to parse, just "is this the exact build we most recently cut." The Units dashboard badges
+outdated units.
 
 The management server (backend + admin dashboard, which ship together) gets a version from the
 same counter: `scripts/build-ipa.sh` stamps `1.0.<BUILD_NUMBER>` into both `package.json` files on
@@ -290,13 +302,21 @@ Jellyfin/
   DesignSystem/
     Theme.swift              colors, metrics, gradients (driven by the server's accentColorHex)
     CachedAsyncImage.swift   in-memory image cache + fade-in (avoids AsyncImage's re-fetch-on-rerender)
-    MediaCards.swift         poster / landscape / library focus cards (tvOS `.card` button style)
+    MediaCards.swift         poster / landscape / library focus cards (tvOS `.card` button style);
+                             the resume-progress bar only ever shows on playable items, never on
+                             folder/series/season tiles (their aggregate watched % isn't "how far
+                             into this I am" and just reads as clutter on a folder icon)
     Components.swift         LoadingView, ErrorView, ClockView, SectionHeaderView
   Views/
     ConnectingView.swift     splash + "management server required" bootstrap + waiting-for-content + Identify
     LibraryView.swift        the folder browser: libraries grid, then folder/season contents
     PlayerView.swift         AVPlayer — starts paused on the first frame, resumes from saved position,
-                             reports start/stop to Jellyfin + the management server
+                             reports start/stop to Jellyfin + the management server. That initial
+                             pause gets a large "Paused / Press Play to start …" overlay
+                             (`PlayerController.isPrimedPause`) — AVKit's own transport UI only shows
+                             a small pause glyph, easy to mistake for a stuck/broken player on first
+                             open. Goes away for good on the user's first real Play press; later
+                             pauses mid-viewing don't need the same explanation.
 ```
 
 `Jellyfin/Support/Info.plist` (a sibling of `Jellyfin/Jellyfin/`, deliberately **outside** it) supplies
@@ -311,11 +331,23 @@ produce ... Info.plist").
 configuration and no local cache: every launch must reach the management server to obtain its
 config. The only local input is the management server address (the bootstrap), shown on the
 connection screen. There is no "watch now" dashboard, no shelves, and no search — libraries →
-folders → videos, and tapping a video opens the player directly, paused on the first frame.
+folders → videos, and tapping a video opens the player directly, paused on the first frame. A quiet
+`appVersion` caption (fine light grey, `DeviceIdentity.appVersion`) sits at the very bottom of the
+browse root — but only there: `BrowseRootView` binds its own `NavigationPath` and gates the caption
+on `path.isEmpty`, so it disappears the moment you drill into a folder rather than following you
+around.
 
 **State machine (`AppModel.phase`):** `launching → registering → connectingJellyfin → ready`, plus
 `waitingForContent` (server reachable, no Jellyfin assigned yet), `needsManagementServer` (server
-unreachable — the app is **blocked** and keeps retrying), and `error(message)`. A background loop
+unreachable — the app is **blocked** and keeps retrying), and `error(message)`. `needsManagementServer`
+renders one of two different screens depending on whether this unit has ever connected before
+(`DeviceIdentity.deviceToken == nil`): a unit that's never registered doesn't know its server yet,
+so it gets `ManagementSetupView` (the address-entry prompt); a unit that already has a device token
+has connected before, so losing the connection later isn't a setup problem — it gets a plain
+`ErrorView` ("Lost connection to the management server… retrying automatically") instead. Showing
+the address-entry screen again in that second case used to be confusing: the app already knows its
+server and is already retrying in the background, so prompting to re-enter the address it never
+lost read as if the unit had forgotten its configuration. A background loop
 heartbeats every 3 s when connected (applying config changes and admin commands live — tuned
 tight since the whole fleet is on one LAN; see `AppModel.heartbeatInterval`), retrying every 2 s
 while blocked; if the server disappears it blocks after 8 failed heartbeats (~24 s+) and

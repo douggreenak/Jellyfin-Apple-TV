@@ -1,7 +1,7 @@
 {
   "name": "jellyfin-admin",
   "private": true,
-  "version": "1.0.23",
+  "version": "1.0.24",
   "type": "module",
   "description": "Admin web dashboard for the Jellyfin Apple TV fleet management server.",
   "scripts": {

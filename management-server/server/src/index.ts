@@ -5,6 +5,7 @@ import cors from "cors";
 import { initDb } from "./db";
 import { initAuth } from "./auth";
 import { startScheduler } from "./scheduler";
+import { startAppVersionPolling } from "./appVersion";
 import { setOnlineWindowSeconds } from "./util";
 import { devicesRouter } from "./routes/devices";
 import { adminRouter } from "./routes/admin";
@@ -49,6 +50,7 @@ initDb(DB_PATH);
 initAuth({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD, jwtSecret: JWT_SECRET });
 setOnlineWindowSeconds(ONLINE_WINDOW_SECONDS);
 startScheduler(); // fires power on/off schedules (pyatv)
+startAppVersionPolling(); // keeps "fleet's latest version" accurate even if this checkout is stale
 
 // ----- Build app -----
 const app = express();

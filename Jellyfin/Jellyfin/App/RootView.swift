@@ -48,7 +48,22 @@ struct RootView: View {
         case .waitingForContent:
             WaitingForContentView()
         case .needsManagementServer:
-            ManagementSetupView()
+            // A unit that has never registered doesn't know its server yet, so it
+            // needs the address-entry screen. A unit that already has a device
+            // token has connected before — losing the connection later (network
+            // blip, server restart/migration) isn't a setup problem, and prompting
+            // for the server address again would be confusing since the app
+            // already knows it and is retrying automatically in the background.
+            if model.identity.deviceToken == nil {
+                ManagementSetupView()
+            } else {
+                ErrorView(
+                    title: "Lost connection to the management server",
+                    message: "This Apple TV can't reach \(model.identity.managementBaseURL) right now. It will keep retrying automatically.",
+                    retryTitle: "Retry Now",
+                    retry: { model.retry() }
+                )
+            }
         case .error(let message):
             ErrorView(title: "Something went wrong", message: message, retry: { model.retry() })
         }
@@ -59,9 +74,10 @@ struct RootView: View {
 /// videos. Tapping a video opens the player directly.
 struct BrowseRootView: View {
     @Environment(AppModel.self) private var model
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if let root = model.rootLibrary {
                     LibraryFolderView(parent: root)
@@ -70,6 +86,17 @@ struct BrowseRootView: View {
                 }
             }
             .mediaDestinations()
+        }
+        // Only at the browse root (not on pushed folders): a quiet build marker
+        // for spotting which version a unit is actually running without digging
+        // into the admin dashboard.
+        .overlay(alignment: .bottom) {
+            if path.isEmpty {
+                Text(model.identity.appVersion)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.3))
+                    .padding(.bottom, 24)
+            }
         }
     }
 }

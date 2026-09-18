@@ -20,21 +20,34 @@ final class PlayerController {
     private var observer: NSKeyValueObservation?
     private var didAutoPause = false
 
+    /// True from creation until the user's own first Play press actually starts
+    /// playback. Drives a large, unmissable "Paused" overlay — AVKit's native
+    /// transport UI only shows a small pause glyph, easy to mistake for a stuck
+    /// or broken player on first open. Goes false for good once real playback
+    /// begins; later pauses mid-viewing don't need the same explanation.
+    private(set) var isPrimedPause = true
+
     init(url: URL, startSeconds: Double) {
         player = AVPlayer(url: url)
         player.allowsExternalPlayback = true
         if startSeconds > 0 {
             player.seek(to: CMTime(seconds: startSeconds, preferredTimescale: 600))
         }
-        // Prime the pipeline so the first frame decodes & renders, then pause on it.
+        // Prime the pipeline so the first frame decodes & renders, then pause on
+        // it (HLS won't decode a frame while paused). Keep watching after that:
+        // the *next* transition to .playing is the user's own Play press, which
+        // is when the primed-pause overlay should actually go away.
         observer = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
             guard p.timeControlStatus == .playing, let self else { return }
             Task { @MainActor [self] in
-                guard !self.didAutoPause else { return }
-                self.didAutoPause = true
-                self.player.pause()
-                self.observer?.invalidate()
-                self.observer = nil
+                if !self.didAutoPause {
+                    self.didAutoPause = true
+                    self.player.pause()
+                } else {
+                    self.isPrimedPause = false
+                    self.observer?.invalidate()
+                    self.observer = nil
+                }
             }
         }
         player.play()
@@ -68,6 +81,11 @@ struct PlayerView: View {
             if let controller {
                 VideoPlayer(player: controller.player)
                     .ignoresSafeArea()
+                if controller.isPrimedPause {
+                    PausedOverlay(itemName: item.name)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
             } else if let failure {
                 ErrorView(
                     title: "Can't play this video",
@@ -79,6 +97,7 @@ struct PlayerView: View {
                 LoadingView(label: "Loading \(item.name)…")
             }
         }
+        .animation(.easeOut(duration: 0.3), value: controller?.isPrimedPause)
         .onAppear(perform: start)
         .onDisappear(perform: stop)
         .toolbar(.hidden, for: .navigationBar)
@@ -113,5 +132,31 @@ struct PlayerView: View {
         Task {
             await client?.reportPlaybackStopped(itemId: id, positionTicks: positionTicks)
         }
+    }
+}
+
+/// A large, unmissable "Paused" marker shown only for the initial primed-pause
+/// state (see `PlayerController.isPrimedPause`) — AVKit's own transport UI marks
+/// this with just a small pause glyph, which reads as a stuck or broken player
+/// rather than "this is intentionally waiting for you to press Play."
+private struct PausedOverlay: View {
+    let itemName: String
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "pause.circle.fill")
+                .font(.system(size: 120))
+                .symbolRenderingMode(.hierarchical)
+            VStack(spacing: 8) {
+                Text("Paused")
+                    .font(.system(size: 42, weight: .bold))
+                Text("Press Play to start \(itemName)")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(60)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 32, style: .continuous))
     }
 }

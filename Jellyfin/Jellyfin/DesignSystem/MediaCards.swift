@@ -95,7 +95,10 @@ struct MediaTile: View {
             }
             .frame(width: width, height: height)
             .clipped()
-            if let p = item.userData?.progress, p > 0.01, p < 0.99 {
+            // Only playable items (movies/episodes) get a resume-progress bar —
+            // it's meaningless clutter on a folder/series/season tile, whose
+            // aggregate watched percentage isn't "how far into this I am."
+            if !item.isContainer, let p = item.userData?.progress, p > 0.01, p < 0.99 {
                 ProgressBar(progress: p)
             }
         }
