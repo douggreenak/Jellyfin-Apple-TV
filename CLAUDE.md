@@ -105,6 +105,24 @@ right trade for a managed fleet where reliability beats efficiency. Unlike the `
 specific failure mode genuinely can't be reproduced in the Simulator (no real HDMI/HDCP negotiation
 there) — verify on a real Apple TV if HEVC/HDR content is ever added to the library.
 
+**Bitrate/quality is controlled by `VideoBitRate`, not `maxStreamingBitrate` — the latter does
+nothing on this endpoint.** A first attempt at fixing a real "trash quality" report sent only
+`maxStreamingBitrate` (always, even at "Unlimited"/0, mapped to a fixed 100 Mbps ceiling —
+`unlimitedBitrateBps`). It didn't fix anything, because that param is silently ignored here: with
+it at 100 Mbps or omitted, a real 1920×1080 HEVC source transcoded down to **416×234 at 256 kbps**
+— confirmed with live `curl` tests against the real server, the same "don't trust reasoning alone"
+lesson as the `ApiKey` bug above. `maxWidth`/`maxHeight` didn't fix it either. Only `VideoBitRate`
+did — verified three ways: `curl` showing the manifest's `RESOLUTION` line jump from `416x234` to
+the source's real `1920x1080` (and, on a second real item, `3840x2160`); measuring actual delivered
+`.ts` segment bytes/duration (not the manifest's `BANDWIDTH` field, which read a flat `256000` in
+every failing case regardless of source or params — a cosmetic quirk of this endpoint, not the real
+rate); and a debug build in the Simulator that loaded the fixed URL straight into a real `AVPlayer`
+and read back `AVPlayerItem.presentationSize` live — `1920x1080` and `3840x2160`, matching source
+exactly, with visibly sharp video. Unlike the HEVC/HDCP note above, this one **is** fully
+verifiable in the Simulator: it's a plain server-side quality-selection bug, nothing to do with
+real display output negotiation. Send both params (`maxStreamingBitrate` stays, harmless) but treat
+`VideoBitRate` as the one that actually matters.
+
 ## Jellyfin auth headers (both clients — tvOS app AND management-server/server/src/jellyfin.ts)
 **Always send both `Authorization` and `X-Emby-Authorization`** with the identical
 `MediaBrowser Client="...", Device="...", DeviceId="...", Version="..."` value on every Jellyfin

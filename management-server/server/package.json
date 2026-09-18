@@ -1,6 +1,6 @@
 {
   "name": "jellyfin-management-server",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "description": "Jellyfin management server backend (Node + TypeScript + SQLite)",
   "license": "MIT",
   "main": "dist/index.js",

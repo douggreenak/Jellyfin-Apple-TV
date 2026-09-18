@@ -209,19 +209,28 @@ final class JellyfinClient {
     /// source format. (Direct static streaming was removed because Apple devices have
     /// no MPEG-2 decoder, so it silently failed on such content.)
     ///
-    /// **Always sends an explicit `maxStreamingBitrate`, even at the "Unlimited" admin
-    /// setting.** Omitting the param entirely (the old behavior when `maxBitrateMbps`
-    /// was 0 and `preferDirectPlay` was true — i.e. every unit's factory default) lets
-    /// Jellyfin fall back to its own internal default bitrate, which is tuned for
-    /// unknown/constrained networks and is visibly over-compressed — exactly the
-    /// "trash quality" a fleet on one LAN with effectively unlimited bandwidth has no
-    /// reason to accept. "Unlimited" here means a generous fixed ceiling
-    /// (`unlimitedBitrateBps`) well above anything a real source needs, not an actually
-    /// unbounded request — Jellyfin always gets a real number to target instead of
-    /// picking a conservative one on its own. `preferDirectPlay` no longer affects
-    /// this: forcing `h264`-only below already forces a transcode for any non-H.264
-    /// source regardless of that setting, so the same generous ceiling should apply
-    /// whenever a transcode happens, not a separate, lower fallback.
+    /// **The query parameter that actually controls transcode quality is `VideoBitRate`,
+    /// not `maxStreamingBitrate`.** An earlier version of this method sent only
+    /// `maxStreamingBitrate` (plus omitted it entirely at the factory-default
+    /// `maxBitrateMbps == 0`) — confirmed live, against a real Jellyfin 12.1.0 server,
+    /// that `maxStreamingBitrate` is silently ignored by this plain `master.m3u8`
+    /// endpoint: with it set to 100 Mbps (or left off) a 1920×1080 HEVC source still
+    /// transcoded down to **416×234 at 256 kbps**, Jellyfin's rock-bottom default
+    /// quality tier — the real "trash quality" bug, and a far bigger problem than
+    /// bitrate alone (a tiny 416×234 frame upscaled to a TV screen is unwatchable
+    /// regardless of bitrate). Adding an explicit `maxWidth`/`maxHeight` did **not**
+    /// fix it either — Jellyfin's resolution selection on this endpoint is driven by
+    /// `VideoBitRate`, not a resolution hint. Only setting `VideoBitRate` restored full
+    /// source resolution: verified against two more real sources on the actual
+    /// server — a 1920×1080 HEVC item transcoded to a full 1920×1080 H.264 stream, and
+    /// a 3840×2160 HEVC item transcoded to a full 3840×2160 H.264 stream at ~13 Mbps
+    /// (correctly *higher* than its ~6 Mbps HEVC source — H.264 needs more bits than
+    /// HEVC for equivalent quality, so that's the encoder doing its job, not a bug).
+    /// `maxStreamingBitrate` is still sent too (harmless, possibly meaningful to other
+    /// server versions or codepaths), but `VideoBitRate` is the one actually load-
+    /// bearing here. `preferDirectPlay` doesn't affect any of this: forcing
+    /// `h264`-only below already forces a transcode for any non-H.264 source
+    /// regardless of that setting.
     ///
     /// **The query parameter is `ApiKey`, not `api_key`.** `api_key` is the legacy
     /// Emby-compatibility spelling; Jellyfin 12+ silently returns 401 for it on every
@@ -274,6 +283,9 @@ final class JellyfinClient {
             URLQueryItem(name: "transcodingProtocol", value: "hls"),
             URLQueryItem(name: "videoRangeType", value: "SDR"),
             URLQueryItem(name: "maxVideoBitDepth", value: "8"),
+            // VideoBitRate is the one Jellyfin actually honors on this endpoint for
+            // both encode bitrate AND resolution selection (see doc comment above).
+            URLQueryItem(name: "VideoBitRate", value: String(bitrateBps)),
             URLQueryItem(name: "maxStreamingBitrate", value: String(bitrateBps))
         ]
         components?.queryItems = query

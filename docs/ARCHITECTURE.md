@@ -274,20 +274,29 @@ in the Simulator (no real HDMI/HDCP negotiation there). This fleet's library is 
 H.264, so this wasn't the cause of the bug above, but forecloses the same symptom for any future HEVC
 content, at the cost of transcode CPU on sources that were already safe.
 
-`maxStreamingBitrate` is **always** sent explicitly, even at the admin's "Unlimited" (0) setting —
-which maps to a fixed 100 Mbps ceiling (`JellyfinClient.unlimitedBitrateBps`), not an actually
-unbounded request. Omitting the param (the old behavior at the factory-default `maxBitrateMbps: 0`
-+ `preferDirectPlay: true`) lets Jellyfin fall back to its own internal default, which is
-conservative and visibly over-compressed — this was the cause of a real "trash quality" complaint.
-Verified live against the real server: an already-H.264 source remuxes/direct-streams at its full
-original bitrate regardless of this param (measured a delivered `.ts` segment at 3.38 Mbps against
-a ~3 Mbps source — direct-stream just copies the stream, bitrate isn't a factor), but any source
-that needs an actual transcode (everything non-H.264, forced by the `videoCodec=h264` restriction
-above) has no such free pass — that's the path a missing bitrate hint actually degrades. The
-manifest's advertised `BANDWIDTH` attribute is not a reliable signal either way: it read a flat
-`256000` regardless of source bitrate or this param in that live test, evidently a cosmetic
-Jellyfin quirk on this endpoint rather than the real delivered rate — measure actual segment
-bytes/duration, not the manifest header, when verifying bitrate changes.
+**`VideoBitRate` is the parameter that actually controls transcode quality on this endpoint —
+`maxStreamingBitrate` does nothing here.** A first attempt at fixing a real "trash quality" report
+sent only `maxStreamingBitrate` (always, even at the admin's "Unlimited" (0) setting, which maps to
+a fixed 100 Mbps ceiling — `JellyfinClient.unlimitedBitrateBps` — not an actually unbounded
+request). That did **not** fix the report. Direct `curl` testing against the live server (an
+essential step — the first fix looked reasonable and still didn't work) found that `maxStreamingBitrate`
+is silently ignored by this plain `master.m3u8` endpoint: with it at 100 Mbps, or omitted entirely
+(the original factory-default behavior), a 1920×1080 HEVC source transcoded down to **416×234 at
+256 kbps** — Jellyfin's rock-bottom default tier. Adding explicit `maxWidth`/`maxHeight` didn't fix
+it either. Only adding `VideoBitRate` did: verified against two more real sources on the live
+server — a 1920×1080 HEVC item transcoded to full 1920×1080 H.264, and a 3840×2160 HEVC item to
+full 3840×2160 H.264 at ~13 Mbps (correctly *higher* than its ~6 Mbps HEVC source, since H.264
+needs more bits than HEVC for equivalent quality). Confirmed a third way, beyond `curl`: a debug
+build with a temporary hook (bypassing the whole management-server/login flow, reverted before
+commit) loaded each fixed URL straight into a real `AVPlayer` in the tvOS Simulator and read back
+`AVPlayerItem.presentationSize` live — `1920×1080` and `3840×2160` respectively, matching source
+exactly, with visibly sharp, detailed video. `maxStreamingBitrate` is still sent too (harmless,
+possibly meaningful to other server versions), but `VideoBitRate` is the one load-bearing here.
+The manifest's advertised `BANDWIDTH` attribute is not a reliable signal either way for checking
+this: it read a flat `256000` in every failing test regardless of source bitrate or params,
+evidently a cosmetic quirk of this endpoint rather than the real delivered rate — trust actual
+decoded resolution/segment bytes, not the manifest header, when verifying bitrate or quality
+changes here.
 
 ---
 
