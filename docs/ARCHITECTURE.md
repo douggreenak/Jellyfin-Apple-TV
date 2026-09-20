@@ -339,8 +339,14 @@ Jellyfin/
                              pause gets a large "Paused / Press Play to start …" overlay
                              (`PlayerController.isPrimedPause`) — AVKit's own transport UI only shows
                              a small pause glyph, easy to mistake for a stuck/broken player on first
-                             open. Goes away for good on the user's first real Play press; later
-                             pauses mid-viewing don't need the same explanation.
+                             open. `isPrimedPause` starts `false`, not `true`: it only flips on once
+                             the first frame has actually decoded and the pipeline auto-pauses on it
+                             (inside the `didAutoPause` branch of the `timeControlStatus` observer),
+                             so the overlay doesn't appear while AVKit's own loading/buffering
+                             spinner is still showing for that same first frame — the two were
+                             stacking on top of each other. Goes away for good on the user's first
+                             real Play press; later pauses mid-viewing don't need the same
+                             explanation.
 ```
 
 `Jellyfin/Support/Info.plist` (a sibling of `Jellyfin/Jellyfin/`, deliberately **outside** it) supplies

@@ -20,12 +20,16 @@ final class PlayerController {
     private var observer: NSKeyValueObservation?
     private var didAutoPause = false
 
-    /// True from creation until the user's own first Play press actually starts
+    /// True once the first frame has actually decoded and the pipeline has been
+    /// auto-paused on it, until the user's own first Play press starts real
     /// playback. Drives a large, unmissable "Paused" overlay — AVKit's native
     /// transport UI only shows a small pause glyph, easy to mistake for a stuck
-    /// or broken player on first open. Goes false for good once real playback
-    /// begins; later pauses mid-viewing don't need the same explanation.
-    private(set) var isPrimedPause = true
+    /// or broken player on first open. Starts `false` (not `true`) so the
+    /// overlay doesn't appear while AVKit's own loading/buffering spinner is
+    /// still showing for that first frame — the two were overlapping. Goes
+    /// false for good once real playback begins; later pauses mid-viewing
+    /// don't need the same explanation.
+    private(set) var isPrimedPause = false
 
     init(url: URL, startSeconds: Double) {
         player = AVPlayer(url: url)
@@ -43,6 +47,11 @@ final class PlayerController {
                 if !self.didAutoPause {
                     self.didAutoPause = true
                     self.player.pause()
+                    // The first frame is decoded and on screen now — AVKit's
+                    // loading spinner is done, so it's safe to show our own
+                    // "Paused" overlay without the two stacking on top of
+                    // each other.
+                    self.isPrimedPause = true
                 } else {
                     self.isPrimedPause = false
                     self.observer?.invalidate()
