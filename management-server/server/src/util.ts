@@ -33,6 +33,17 @@ export interface UnitStatus {
    * doc comment) — rows written before this field existed simply lack the key.
    */
   localNetworkName?: string | null;
+  /**
+   * Persistent "please highlight yourself" state, set by an admin (or cleared)
+   * via POST /units/:unitId/identify, and delivered to the device on every
+   * heartbeat (see routes/devices.ts) so it shows/hides its on-screen overlay
+   * accordingly. Also clearable by the device itself, via the same heartbeat's
+   * `identifyDismissed` flag, when the user dismisses it with the physical
+   * remote. Replaces the old one-shot "identify" command, which had no
+   * persistent state and so couldn't be toggled off or reflected in the admin
+   * UI's own button state.
+   */
+  identifying: boolean;
 }
 
 /** A fresh, blank status (used for newly registered or imported units). */
@@ -47,12 +58,13 @@ export function emptyStatus(): UnitStatus {
     nowPlaying: null,
     lastError: null,
     localNetworkName: null,
+    identifying: false,
   };
 }
 
 export interface PendingCommand {
   id: string;
-  type: "reload" | "identify" | "restart" | "migrate";
+  type: "reload" | "restart" | "migrate";
   issuedAt: string;
   /** For "migrate": the new management server base URL. */
   data?: string;
@@ -124,7 +136,9 @@ export function toUnit(row: UnitRow): UnitApi {
     displayName: row.displayName,
     groupId: row.groupId,
     config,
-    status: { ...status, online: deriveOnline(status.lastSeenAt) },
+    // `identifying` defaults to false for rows written before this field
+    // existed (JSON.parse just omits the key; it was never actually false).
+    status: { ...status, online: deriveOnline(status.lastSeenAt), identifying: status.identifying ?? false },
     pendingCommand,
     registeredAt: row.registeredAt,
     adopted: !!row.adopted,

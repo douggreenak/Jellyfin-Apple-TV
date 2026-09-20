@@ -114,7 +114,8 @@ export default function Schedule() {
         <Box>
           <Typography variant="h4">Schedule</Typography>
           <Typography variant="body2" color="text.secondary">
-            Automatically wake or sleep TVs at set times. Times are in the server’s local time.
+            Automatically wake or sleep Apple TVs at set times. Times are in the server’s local
+            time.
           </Typography>
         </Box>
         <Button
@@ -129,16 +130,22 @@ export default function Schedule() {
         </Button>
       </Stack>
 
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <strong>These schedules sleep/wake the Apple TV, not the TV screen itself.</strong> Apple
+        provides no way to control a connected TV's power over the network — this is the same
+        limitation as the "Remote power" panel on each unit's detail page.
+      </Alert>
+
       {availableQuery.data && !availableQuery.data.available && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           pyatv isn’t installed on the server, so schedules can’t power devices yet. Install it
-          (<code>pipx install pyatv</code>) and pair your TVs.
+          (<code>pipx install pyatv</code>) and pair your Apple TVs.
         </Alert>
       )}
       {availableQuery.data?.available && pairedCount === 0 && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          No devices are paired for power control yet. Pair a TV from its <strong>Remote power</strong>{' '}
-          panel so schedules have something to act on.
+          No devices are paired for power control yet. Pair an Apple TV from its{' '}
+          <strong>Remote power</strong> panel so schedules have something to act on.
         </Alert>
       )}
 
@@ -151,7 +158,7 @@ export default function Schedule() {
           <ScheduleIcon sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
           <Typography variant="h6">No schedules yet</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
-            Create one to turn TVs on in the morning and off at night automatically.
+            Create one to wake Apple TVs in the morning and sleep them at night automatically.
           </Typography>
           <Button
             variant="contained"

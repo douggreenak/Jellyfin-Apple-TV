@@ -150,23 +150,86 @@ struct WaitingForContentView: View {
 
 // MARK: - Identify overlay
 
+/// Full-screen "here I am" marker, shown for as long as the server's persistent
+/// `identifying` state is true (see `AppModel.isIdentifying`) — not a timed
+/// flash. Dismissible from either end: an admin can turn it off from the
+/// dashboard at any time, or the person standing in front of the TV can press
+/// Select or Menu on the physical remote right here.
 struct IdentifyOverlay: View {
     let name: String
     let accent: Color
+    let unitId: String
+    let appVersion: String
+    let serverVersion: String?
+    let tvosVersion: String
+    let managementClient: ManagementClient
+    let onDismiss: () -> Void
+
+    @State private var ipAddress: String?
+    @State private var throughputMbps: Double?
+    @State private var measuringThroughput = true
 
     var body: some View {
-        ZStack {
-            accent.ignoresSafeArea()
-            VStack(spacing: 24) {
-                Image(systemName: "hand.wave.fill")
-                    .font(.system(size: 140))
-                Text(name)
-                    .font(.system(size: 96, weight: .heavy, design: .rounded))
-                Text("This is the Apple TV you're looking for")
-                    .font(.title2)
-                    .opacity(0.85)
+        Button(action: onDismiss) {
+            ZStack {
+                accent.ignoresSafeArea()
+                VStack(spacing: 28) {
+                    Image(systemName: "hand.wave.fill")
+                        .font(.system(size: 100))
+                    Text(name)
+                        .font(.system(size: 72, weight: .heavy, design: .rounded))
+                    Text("This is the Apple TV you're looking for")
+                        .font(.title3)
+                        .opacity(0.85)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        IdentifyInfoRow(label: "IP address", value: ipAddress ?? "Unavailable")
+                        IdentifyInfoRow(label: "Connection speed", value: throughputText)
+                        IdentifyInfoRow(label: "App version", value: appVersion)
+                        IdentifyInfoRow(label: "Server version", value: serverVersion ?? "Unknown")
+                        IdentifyInfoRow(label: "tvOS version", value: tvosVersion)
+                        IdentifyInfoRow(label: "Unit ID", value: unitId)
+                    }
+                    .padding(28)
+                    .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+                    Text("Press Select or Menu to dismiss")
+                        .font(.callout)
+                        .opacity(0.7)
+                }
+                .foregroundStyle(.white)
+                .padding(60)
             }
-            .foregroundStyle(.white)
         }
+        .buttonStyle(.plain)
+        .onExitCommand(perform: onDismiss)
+        .task {
+            ipAddress = NetworkInfo.localIPAddress
+            throughputMbps = await managementClient.measureThroughputMbps()
+            measuringThroughput = false
+        }
+    }
+
+    private var throughputText: String {
+        if measuringThroughput { return "Measuring…" }
+        guard let throughputMbps else { return "Unavailable" }
+        return String(format: "%.1f Mbps", throughputMbps)
+    }
+}
+
+private struct IdentifyInfoRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .opacity(0.7)
+            Spacer(minLength: 60)
+            Text(value)
+                .fontWeight(.semibold)
+        }
+        .font(.title3)
+        .frame(minWidth: 560, alignment: .leading)
     }
 }

@@ -111,10 +111,17 @@ export const heartbeatSchema = z
     // Sent on every heartbeat (not just register) so the server's view of what a
     // unit is running never goes stale across an app update pushed via MDM.
     appVersion: z.string().optional(),
+    // Same freshness reasoning as appVersion — a tvOS software update can land
+    // between registers too.
+    tvosVersion: z.string().optional(),
     // This unit's real name, recovered client-side via Bonjour (UIDevice.current.name
     // is gated by Apple and just returns "Apple TV"). Absent until/unless the device
     // resolves it; see routes/devices.ts for how this feeds displayName.
     localName: z.string().optional(),
+    // Set (to true) only on the heartbeat sent immediately after the user dismisses
+    // the identify overlay with the physical remote — see routes/devices.ts. Absent
+    // on every other heartbeat; there is deliberately no "false" meaning here.
+    identifyDismissed: z.boolean().optional(),
   })
   .strict();
 
@@ -137,9 +144,39 @@ export const ackSchema = z.object({ commandId: z.string() }).strict();
 
 export const commandSchema = z
   .object({
-    type: z.enum(["reload", "identify", "restart", "migrate"]),
+    // "identify" used to live here as a one-shot, ack-and-forget command (a brief
+    // flash with no persistent state). It's now a level-triggered status field
+    // instead (UnitStatus.identifying, set via POST /units/:unitId/identify) so
+    // the admin can turn it on AND off, the on-screen state can be reflected
+    // live, and the device itself can clear it when the user dismisses with the
+    // remote — none of which a fire-and-forget command can express.
+    type: z.enum(["reload", "restart", "migrate"]),
     // For "migrate": the new management server base URL the device should switch to.
     data: z.string().optional(),
+  })
+  .strict();
+
+/** POST /units/:unitId/identify — sets (not toggles) the persistent identify state. */
+export const setIdentifySchema = z.object({ on: z.boolean() }).strict();
+
+/**
+ * POST /devices/:unitId/playback-report — a playback session's quality
+ * summary, computed client-side from AVFoundation's access log (see
+ * PlayerController.qualitySummary() in PlayerView.swift). All the numeric
+ * quality fields are optional: a session too short to log a real access-log
+ * event has nothing meaningful to report beyond that it happened.
+ */
+export const playbackReportSchema = z
+  .object({
+    itemId: z.string().optional(),
+    itemName: z.string().optional(),
+    durationSeconds: z.number().min(0),
+    avgBitrateKbps: z.number().min(0).optional(),
+    indicatedBitrateKbps: z.number().min(0).optional(),
+    droppedFrames: z.number().int().min(0).optional(),
+    stalls: z.number().int().min(0).optional(),
+    width: z.number().int().min(0).optional(),
+    height: z.number().int().min(0).optional(),
   })
   .strict();
 

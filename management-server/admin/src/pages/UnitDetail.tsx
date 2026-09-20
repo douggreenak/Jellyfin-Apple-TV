@@ -20,6 +20,7 @@ import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
+import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import ReplayIcon from '@mui/icons-material/Replay';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -104,15 +105,19 @@ export default function UnitDetail() {
     onSuccess: (updated, type) => {
       queryClient.setQueryData(['unit', id], updated);
       queryClient.invalidateQueries({ queryKey: ['units'] });
-      setSnack(
-        type === 'identify'
-          ? 'Identify sent.'
-          : type === 'reload'
-            ? 'Reload sent.'
-            : 'Restart sent.',
-      );
+      setSnack(type === 'reload' ? 'Reload sent.' : 'Restart sent.');
     },
     onError: (err) => setSnack(err instanceof Error ? err.message : 'Command failed.'),
+  });
+
+  const identifyMutation = useMutation({
+    mutationFn: (on: boolean) => api.setIdentify(id, on),
+    onSuccess: (updated, on) => {
+      queryClient.setQueryData(['unit', id], updated);
+      queryClient.invalidateQueries({ queryKey: ['units'] });
+      setSnack(on ? 'Identify turned on.' : 'Identify turned off.');
+    },
+    onError: (err) => setSnack(err instanceof Error ? err.message : 'Identify command failed.'),
   });
 
   const deleteMutation = useMutation({
@@ -229,6 +234,8 @@ export default function UnitDetail() {
               onGroupId={(groupId) => setDraft({ ...draft, groupId })}
               onCommand={(type) => commandMutation.mutate(type)}
               commandPending={commandMutation.isPending}
+              onIdentify={(on) => identifyMutation.mutate(on)}
+              identifyPending={identifyMutation.isPending}
               onDelete={() => setConfirmDelete(true)}
             />
             <PowerPanel unitId={id} />
@@ -313,6 +320,8 @@ interface GeneralTabProps {
   onGroupId: (v: string | null) => void;
   onCommand: (type: CommandType) => void;
   commandPending: boolean;
+  onIdentify: (on: boolean) => void;
+  identifyPending: boolean;
   onDelete: () => void;
 }
 
@@ -324,9 +333,12 @@ function GeneralTab({
   onGroupId,
   onCommand,
   commandPending,
+  onIdentify,
+  identifyPending,
   onDelete,
 }: GeneralTabProps) {
   const { status } = unit;
+  const identifying = status.identifying ?? false;
 
   // Only worth a row once resolved and different from the current display
   // name — the common case is it already got auto-adopted into displayName
@@ -392,12 +404,13 @@ function GeneralTab({
         </Typography>
         <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
           <Button
-            variant="outlined"
-            startIcon={<LightbulbIcon />}
-            onClick={() => onCommand('identify')}
-            disabled={!status.online || commandPending}
+            variant={identifying ? 'contained' : 'outlined'}
+            color={identifying ? 'warning' : 'primary'}
+            startIcon={identifying ? <LightbulbIcon /> : <LightbulbOutlinedIcon />}
+            onClick={() => onIdentify(!identifying)}
+            disabled={!status.online || identifyPending}
           >
-            Identify
+            {identifying ? 'Stop identifying' : 'Identify'}
           </Button>
           <Button
             variant="outlined"

@@ -12,7 +12,7 @@ const TOKEN_KEY = 'kc.admin.jwt';
 export type BrowseMode = 'full' | 'curated' | 'kiosk';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type PosterStyle = 'poster' | 'thumb' | 'wide';
-export type CommandType = 'reload' | 'identify' | 'restart';
+export type CommandType = 'reload' | 'restart';
 
 // A single virtual remote-control key press, sent straight to a paired Apple TV
 // over pyatv's Companion protocol (same pairing as remote power). `top_menu` is
@@ -105,6 +105,8 @@ export interface UnitStatus {
    * renamed to something else, so the operator can still see/reuse the real name.
    */
   localNetworkName?: string | null;
+  /** Persistent identify-overlay state — see POST /units/:id/identify. */
+  identifying?: boolean;
 }
 
 export interface PendingCommand {
@@ -133,6 +135,29 @@ export interface Unit {
   /** Whether this unit is paired for remote power control (pyatv). */
   powerConfigured?: boolean;
   appVersionStatus?: AppVersionStatus;
+}
+
+/**
+ * One playback session's quality summary, computed client-side from
+ * AVFoundation's access log (see PlayerController.qualitySummary() in
+ * PlayerView.swift) and reported when a video stops. Numeric quality fields
+ * are nullable — a session too short to log a real access-log event has
+ * nothing meaningful to report beyond that it happened.
+ */
+export interface PlaybackEvent {
+  id: string;
+  unitId: string;
+  unitDisplayName: string;
+  itemId: string | null;
+  itemName: string | null;
+  recordedAt: string;
+  durationSeconds: number | null;
+  avgBitrateKbps: number | null;
+  indicatedBitrateKbps: number | null;
+  droppedFrames: number | null;
+  stalls: number | null;
+  width: number | null;
+  height: number | null;
 }
 
 export interface JellyfinLibrary {
@@ -372,6 +397,11 @@ export const api = {
     return request<Unit>(`/admin/units/${encodeURIComponent(id)}`);
   },
 
+  /** Recent playback-quality sessions across the fleet, for the Data tab. */
+  getPlaybackStats(): Promise<{ events: PlaybackEvent[] }> {
+    return request('/admin/playback-stats');
+  },
+
   patchConfig(id: string, partial: DeepPartial<UnitConfig>): Promise<Unit> {
     return request<Unit>(`/admin/units/${encodeURIComponent(id)}/config`, {
       method: 'PATCH',
@@ -383,6 +413,14 @@ export const api = {
     return request<Unit>(`/admin/units/${encodeURIComponent(id)}/command`, {
       method: 'POST',
       body: { type },
+    });
+  },
+
+  /** Sets (not toggles) a unit's persistent identify-overlay state. */
+  setIdentify(id: string, on: boolean): Promise<Unit> {
+    return request<Unit>(`/admin/units/${encodeURIComponent(id)}/identify`, {
+      method: 'POST',
+      body: { on },
     });
   },
 

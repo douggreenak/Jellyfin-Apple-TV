@@ -19,9 +19,18 @@ struct RootView: View {
 
             content
 
-            if model.identifyFlash {
-                IdentifyOverlay(name: model.config.displayName, accent: model.theme.accent)
-                    .transition(.opacity)
+            if model.isIdentifying {
+                IdentifyOverlay(
+                    name: model.config.displayName,
+                    accent: model.theme.accent,
+                    unitId: model.identity.unitId,
+                    appVersion: model.identity.appVersion,
+                    serverVersion: model.serverVersion,
+                    tvosVersion: model.identity.tvosVersion,
+                    managementClient: model.management,
+                    onDismiss: { model.dismissIdentify() }
+                )
+                .transition(.opacity)
             }
         }
         // Invisible: just hands the app's UIWindow to screenCapture so the
@@ -30,7 +39,7 @@ struct RootView: View {
         .environment(\.theme, model.theme)
         .preferredColorScheme(model.theme.preferredColorScheme)
         .animation(.smooth, value: model.phase)
-        .animation(.smooth, value: model.identifyFlash)
+        .animation(.smooth, value: model.isIdentifying)
         .task { await model.start() }
     }
 

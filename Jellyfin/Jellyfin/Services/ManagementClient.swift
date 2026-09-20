@@ -57,6 +57,13 @@ struct HeartbeatResponse: Decodable {
     let ok: Bool
     let configVersion: Int
     let command: DeviceCommand?
+    /// Persistent "please highlight yourself" state — replaces the old one-shot
+    /// "identify" command. True for as long as an admin has it turned on, or
+    /// until this device itself dismisses it (see `identifyDismissed` below).
+    let identifying: Bool
+    /// The management server's own version, for display on the identify overlay.
+    /// Absent only against a server old enough not to send it yet.
+    let serverVersion: String?
 }
 
 struct HeartbeatRequest: Encodable {
@@ -68,6 +75,9 @@ struct HeartbeatRequest: Encodable {
     /// app update (pushed via MDM), so it never re-registers, and register is the
     /// only other place this is reported.
     var appVersion: String?
+    /// Same freshness reasoning as appVersion — a tvOS software update can land
+    /// between registers too.
+    var tvosVersion: String?
     /// This device's real name recovered via Bonjour (DeviceIdentity.localName),
     /// once/if LocalDeviceNameResolver has resolved it. Absent (not just nil) on
     /// heartbeats sent before resolution succeeds, or if it never does — the
@@ -75,6 +85,11 @@ struct HeartbeatRequest: Encodable {
     /// still the generic placeholder, so an absent value here just means "no
     /// change," never "clear the name."
     var localName: String?
+    /// Set to true on exactly one heartbeat: the one sent immediately after the
+    /// user dismisses the identify overlay with the physical remote. Absent
+    /// (never `false`) on every other heartbeat — there's nothing to encode when
+    /// nothing happened.
+    var identifyDismissed: Bool?
 
     struct NowPlaying: Encodable {
         let title: String
@@ -82,7 +97,9 @@ struct HeartbeatRequest: Encodable {
         let positionTicks: Int64
     }
 
-    enum CodingKeys: String, CodingKey { case ipAddress, nowPlaying, lastError, appVersion, localName }
+    enum CodingKeys: String, CodingKey {
+        case ipAddress, nowPlaying, lastError, appVersion, tvosVersion, localName, identifyDismissed
+    }
 
     /// `nowPlaying` and `lastError` are *always* encoded (as `null` when absent),
     /// so each heartbeat reports the unit's current status. That lets the server
@@ -94,7 +111,9 @@ struct HeartbeatRequest: Encodable {
         try c.encode(nowPlaying, forKey: .nowPlaying)
         try c.encode(lastError, forKey: .lastError)
         try c.encodeIfPresent(appVersion, forKey: .appVersion)
+        try c.encodeIfPresent(tvosVersion, forKey: .tvosVersion)
         try c.encodeIfPresent(localName, forKey: .localName)
+        try c.encodeIfPresent(identifyDismissed, forKey: .identifyDismissed)
     }
 }
 
@@ -181,17 +200,51 @@ final class ManagementClient {
     }
 
     @discardableResult
-    func heartbeat(ipAddress: String? = nil, nowPlaying: HeartbeatRequest.NowPlaying? = nil, lastError: String? = nil) async throws -> HeartbeatResponse {
-        // appVersion rides on every heartbeat (not just register) so the server
-        // notices an app update even though the unit keeps its device token —
-        // see HeartbeatRequest.appVersion. localName rides along too, once/if
-        // Bonjour resolution has found it (see HeartbeatRequest.localName).
-        let payload = HeartbeatRequest(ipAddress: ipAddress, nowPlaying: nowPlaying, lastError: lastError, appVersion: identity.appVersion, localName: identity.localName)
+    func heartbeat(
+        ipAddress: String? = nil,
+        nowPlaying: HeartbeatRequest.NowPlaying? = nil,
+        lastError: String? = nil,
+        identifyDismissed: Bool? = nil
+    ) async throws -> HeartbeatResponse {
+        // appVersion/tvosVersion ride on every heartbeat (not just register) so the
+        // server notices an app or OS update even though the unit keeps its device
+        // token. localName rides along too, once/if Bonjour resolution has found it
+        // (see HeartbeatRequest.localName).
+        let payload = HeartbeatRequest(
+            ipAddress: ipAddress,
+            nowPlaying: nowPlaying,
+            lastError: lastError,
+            appVersion: identity.appVersion,
+            tvosVersion: identity.tvosVersion,
+            localName: identity.localName,
+            identifyDismissed: identifyDismissed
+        )
         let body = try encoder.encode(payload)
         guard let request = request("devices/\(identity.unitId)/heartbeat", method: "POST", body: body) else {
             throw ManagementError.badURL
         }
         return try await send(request, as: HeartbeatResponse.self)
+    }
+
+    /// Downloads a fixed-size payload from the server and times it, to measure real
+    /// throughput for the identify overlay. tvOS gives third-party apps no way to
+    /// read actual Wi-Fi link speed or signal strength (that needs Apple's
+    /// `com.apple.developer.networking.wifi-info` entitlement, requested from Apple
+    /// and still wouldn't expose a real Mbps figure) — an actual measured transfer
+    /// is the only number this app can produce without that entitlement, and
+    /// arguably more useful anyway: real usable bandwidth to the server this unit
+    /// actually talks to, not raw PHY rate. Returns nil on any failure (offline,
+    /// timeout) rather than throwing — this is a "nice to have" display value, not
+    /// something that should ever block or error out the identify screen.
+    func measureThroughputMbps() async -> Double? {
+        guard let request = request("devices/\(identity.unitId)/speedtest") else { return nil }
+        let start = Date()
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              !data.isEmpty else { return nil }
+        let elapsed = Date().timeIntervalSince(start)
+        guard elapsed > 0 else { return nil }
+        return Double(data.count) * 8 / elapsed / 1_000_000
     }
 
     func ack(commandId: String) async throws {
@@ -223,5 +276,32 @@ final class ManagementClient {
             throw ManagementError.badURL
         }
         _ = try await send(request, as: UploadResponse.self)
+    }
+
+    /// Reports one playback session's quality summary for the admin Data tab's
+    /// bitrate/playback-experience charts. Best-effort and silent on failure —
+    /// a lost report is just one missing data point, never something worth
+    /// retrying or surfacing to the user.
+    func reportPlaybackQuality(itemId: String, itemName: String, durationSeconds: Double, summary: PlaybackQualitySummary) async {
+        struct Body: Encodable {
+            let itemId: String
+            let itemName: String
+            let durationSeconds: Double
+            let avgBitrateKbps: Double?
+            let indicatedBitrateKbps: Double?
+            let droppedFrames: Int?
+            let stalls: Int?
+            let width: Int?
+            let height: Int?
+        }
+        let body = Body(
+            itemId: itemId, itemName: itemName, durationSeconds: durationSeconds,
+            avgBitrateKbps: summary.avgBitrateKbps, indicatedBitrateKbps: summary.indicatedBitrateKbps,
+            droppedFrames: summary.droppedFrames, stalls: summary.stalls,
+            width: summary.width, height: summary.height
+        )
+        guard let encoded = try? encoder.encode(body),
+              let request = request("devices/\(identity.unitId)/playback-report", method: "POST", body: encoded) else { return }
+        _ = try? await session.data(for: request)
     }
 }

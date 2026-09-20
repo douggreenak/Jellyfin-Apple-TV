@@ -13,6 +13,16 @@ import SwiftUI
 import AVKit
 import AVFoundation
 
+/// One playback session's quality summary — see `PlayerController.qualitySummary()`.
+struct PlaybackQualitySummary {
+    let avgBitrateKbps: Double?
+    let indicatedBitrateKbps: Double?
+    let droppedFrames: Int?
+    let stalls: Int?
+    let width: Int?
+    let height: Int?
+}
+
 @MainActor
 @Observable
 final class PlayerController {
@@ -65,6 +75,38 @@ final class PlayerController {
     func currentSeconds() -> Double {
         let s = player.currentTime().seconds
         return s.isFinite ? max(0, s) : 0
+    }
+
+    /// Summarizes this session's HLS playback quality from AVFoundation's own
+    /// access log — real per-segment bitrate/stall/dropped-frame data, not
+    /// anything guessed from our request URL. Feeds the admin Data tab's
+    /// bitrate/playback-experience charts. `nil` if nothing was ever decoded
+    /// (e.g. the user backed out before the first frame rendered).
+    func qualitySummary() -> PlaybackQualitySummary? {
+        guard let events = player.currentItem?.accessLog()?.events, !events.isEmpty else { return nil }
+        var weightedBitrateSum = 0.0
+        var watchedForBitrate = 0.0
+        var droppedFrames = 0
+        var stalls = 0
+        var indicatedBitrate = 0.0
+        for event in events {
+            if event.durationWatched > 0, event.observedBitrate > 0 {
+                weightedBitrateSum += event.observedBitrate * event.durationWatched
+                watchedForBitrate += event.durationWatched
+            }
+            droppedFrames += event.numberOfDroppedVideoFrames
+            stalls += event.numberOfStalls
+            if event.indicatedBitrate > 0 { indicatedBitrate = event.indicatedBitrate }
+        }
+        let size = player.currentItem?.presentationSize
+        return PlaybackQualitySummary(
+            avgBitrateKbps: watchedForBitrate > 0 ? weightedBitrateSum / watchedForBitrate / 1000 : nil,
+            indicatedBitrateKbps: indicatedBitrate > 0 ? indicatedBitrate / 1000 : nil,
+            droppedFrames: droppedFrames,
+            stalls: stalls,
+            width: size.map { Int($0.width) },
+            height: size.map { Int($0.height) }
+        )
     }
 
     func teardown() {
@@ -130,6 +172,7 @@ struct PlayerView: View {
 
     private func stop() {
         let seconds = controller?.currentSeconds() ?? 0
+        let quality = controller?.qualitySummary()
         controller?.teardown()
         controller = nil
 
@@ -137,9 +180,19 @@ struct PlayerView: View {
 
         let positionTicks = Int64(seconds * 10_000_000)
         let id = item.id
+        let name = item.name
         let client = model.jellyfin
+        let management = model.management
         Task {
             await client?.reportPlaybackStopped(itemId: id, positionTicks: positionTicks)
+            // Only worth reporting once real playback actually happened — a
+            // session that never got past the primed-pause frame has nothing
+            // meaningful to say about quality.
+            if let quality, seconds > 0 {
+                await management.reportPlaybackQuality(
+                    itemId: id, itemName: name, durationSeconds: seconds, summary: quality
+                )
+            }
         }
     }
 }

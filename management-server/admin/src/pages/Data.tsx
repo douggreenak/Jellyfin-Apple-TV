@@ -14,6 +14,8 @@ import DevicesOtherIcon from '@mui/icons-material/DevicesOther';
 import WifiTetheringIcon from '@mui/icons-material/WifiTethering';
 import PlayCircleIcon from '@mui/icons-material/PlayCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import SpeedIcon from '@mui/icons-material/Speed';
+import BrokenImageIcon from '@mui/icons-material/BrokenImage';
 import {
   ResponsiveContainer,
   PieChart,
@@ -30,7 +32,7 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
-import { api, type Unit } from '../api/client';
+import { api, type PlaybackEvent, type Unit } from '../api/client';
 
 // The fleet heartbeats every 3s now (see AppModel.heartbeatInterval).
 const POLL_MS = 2_000;
@@ -67,7 +69,47 @@ export default function Data() {
     refetchOnWindowFocus: true,
   });
 
+  const playbackQuery = useQuery({
+    queryKey: ['playback-stats'],
+    queryFn: api.getPlaybackStats,
+    refetchInterval: POLL_MS,
+    refetchOnWindowFocus: true,
+  });
+
   const units = unitsQuery.data ?? [];
+  const events = playbackQuery.data?.events ?? [];
+
+  const pb = useMemo(() => {
+    const withBitrate = events.filter((e): e is PlaybackEvent & { avgBitrateKbps: number } => e.avgBitrateKbps != null);
+    const average = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);
+
+    // Top 10 devices / videos by average observed bitrate — same countBy-style
+    // grouping as the fleet-composition charts above, just averaging a reported
+    // number instead of counting occurrences.
+    const averageByKey = (keyOf: (e: PlaybackEvent) => string): Datum[] => {
+      const byKey = new Map<string, number[]>();
+      for (const e of withBitrate) {
+        const key = keyOf(e);
+        const arr = byKey.get(key) ?? [];
+        arr.push(e.avgBitrateKbps);
+        byKey.set(key, arr);
+      }
+      return [...byKey.entries()]
+        .map(([name, values]) => ({ name, value: Math.round(average(values)) }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
+    };
+
+    return {
+      sessions: events.length,
+      avgBitrateKbps: Math.round(average(withBitrate.map((e) => e.avgBitrateKbps))),
+      byDeviceBitrate: averageByKey((e) => e.unitDisplayName),
+      byVideoBitrate: averageByKey((e) => e.itemName || 'Unknown'),
+      totalStalls: events.reduce((s, e) => s + (e.stalls ?? 0), 0),
+      totalDroppedFrames: events.reduce((s, e) => s + (e.droppedFrames ?? 0), 0),
+      sessionsWithStalls: events.filter((e) => (e.stalls ?? 0) > 0).length,
+    };
+  }, [events]);
 
   const m = useMemo(() => {
     const adopted = units.filter((u) => u.adopted);
@@ -259,6 +301,45 @@ export default function Data() {
             </ChartCard>
           </Section>
 
+          {/* Playback quality — from AVFoundation's own access log per session
+              (PlayerController.qualitySummary()), not guessed from request URLs. */}
+          <Section title="Playback quality">
+            <StatCard
+              label="Sessions logged"
+              value={pb.sessions}
+              sub="playback sessions reported"
+              icon={<PlayCircleIcon />}
+              color={c.info.main}
+            />
+            <StatCard
+              label="Avg bitrate"
+              value={pb.avgBitrateKbps}
+              sub="Kbps, observed across sessions"
+              icon={<SpeedIcon />}
+              color={c.primary.main}
+            />
+            <StatCard
+              label="Sessions with stalls"
+              value={pb.sessionsWithStalls}
+              sub={`${pb.totalStalls} stall${pb.totalStalls === 1 ? '' : 's'} total`}
+              icon={<ErrorOutlineIcon />}
+              color={pb.sessionsWithStalls ? c.warning.main : c.success.main}
+            />
+            <StatCard
+              label="Dropped frames"
+              value={pb.totalDroppedFrames}
+              sub="across all sessions"
+              icon={<BrokenImageIcon />}
+              color={pb.totalDroppedFrames ? c.warning.main : c.success.main}
+            />
+            <ChartCard title="Bitrate by device" subtitle="Average observed bitrate, top 10" span={6}>
+              <Bars data={pb.byDeviceBitrate} color={c.primary.main} theme={theme} valueName="Avg bitrate" valueSuffix=" Kbps" />
+            </ChartCard>
+            <ChartCard title="Bitrate by video" subtitle="Average observed bitrate, top 10" span={6}>
+              <Bars data={pb.byVideoBitrate} color={c.secondary.main} theme={theme} valueName="Avg bitrate" valueSuffix=" Kbps" />
+            </ChartCard>
+          </Section>
+
           {/* Configuration */}
           <Section title="Configuration">
             <ChartCard title="Locked to a folder" subtitle="Kiosk-style restriction">
@@ -382,7 +463,7 @@ function ChartCard({
   title: string;
   subtitle?: string;
   children: ReactNode;
-  span?: 4 | 8 | 12;
+  span?: 4 | 6 | 8 | 12;
   height?: number;
 }) {
   return (
@@ -492,12 +573,27 @@ function Donut({
   );
 }
 
-function Bars({ data, color, theme }: { data: Datum[]; color: string; theme: Theme }) {
+function Bars({
+  data,
+  color,
+  theme,
+  valueName = 'Devices',
+  valueSuffix = '',
+}: {
+  data: Datum[];
+  color: string;
+  theme: Theme;
+  /** Tooltip series label — defaults to "Devices" for the fleet-composition charts. */
+  valueName?: string;
+  /** Appended to the raw number in the tooltip and bar label, e.g. " Kbps". */
+  valueSuffix?: string;
+}) {
   if (data.length === 0) return <NoData />;
   const maxValue = Math.max(...data.map((d) => d.value));
+  const withSuffix = (v: number) => `${v}${valueSuffix}`;
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 28, left: 8, bottom: 0 }}>
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 36, left: 8, bottom: 0 }}>
         <CartesianGrid stroke={theme.palette.divider} strokeDasharray="3 3" horizontal={false} />
         <XAxis
           type="number"
@@ -517,11 +613,12 @@ function Bars({ data, color, theme }: { data: Datum[]; color: string; theme: The
           tickLine={false}
           axisLine={false}
         />
-        <Tooltip {...tooltipProps(theme)} />
-        <Bar dataKey="value" name="Devices" fill={alpha(color, FILL_ALPHA)} radius={[0, 4, 4, 0]} maxBarSize={26}>
+        <Tooltip {...tooltipProps(theme)} formatter={((v: number) => [withSuffix(v), valueName]) as never} />
+        <Bar dataKey="value" name={valueName} fill={alpha(color, FILL_ALPHA)} radius={[0, 4, 4, 0]} maxBarSize={26}>
           <LabelList
             dataKey="value"
             position="right"
+            formatter={withSuffix as never}
             style={{ fill: theme.palette.text.secondary, fontSize: 12 }}
           />
         </Bar>

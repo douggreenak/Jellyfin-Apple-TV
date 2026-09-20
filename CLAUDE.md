@@ -136,11 +136,11 @@ Jellyfin 12.1.0 server: `X-Emby-Authorization` alone → 400; adding `Authorizat
 to parse.
 
 ## Server ↔ device contract
-- Device endpoints: `register`, `GET/PUT config`, `heartbeat`, `ack`. Admin endpoints under
-  `/admin`. Heartbeat (~3s — `AppModel.heartbeatInterval`, tuned tight since the fleet is one
-  LAN) returns `{ok, configVersion, command}`; the device applies config changes
-  (soft‑reconnect, never tearing down the UI) and runs commands (`reload`/`identify`/
-  `restart`/`migrate`).
+- Device endpoints: `register`, `GET/PUT config`, `heartbeat`, `ack`, `speedtest`,
+  `playback-report`. Admin endpoints under `/admin`. Heartbeat (~3s —
+  `AppModel.heartbeatInterval`, tuned tight since the fleet is one LAN) returns
+  `{ok, configVersion, command, identifying, serverVersion}`; the device applies config changes
+  (soft‑reconnect, never tearing down the UI) and runs commands (`reload`/`restart`/`migrate`).
 - **Adoption**: a new device registers `adopted:false` ("ready to adopt"); `POST /admin/units/:id/adopt`
   applies the defaults template (shared Jellyfin account) and marks it adopted.
 - **Move to new server**: a `migrate` command carries the new management base URL (`command.data`);
@@ -153,6 +153,21 @@ to parse.
   recovers the real name via Bonjour instead — see `docs/ARCHITECTURE.md` §2, "Real device
   names via Bonjour" — which needs the ordinary Local Network permission
   (`Jellyfin/Support/Info.plist`), not the gated entitlement.
+- **`identify` is not a command — it's a persistent `status.identifying` flag**, set via
+  `POST /admin/units/:id/identify {on}` and delivered on every heartbeat, not queued/acked like
+  `reload`/`restart`/`migrate`. Don't add it back to `commandSchema`'s enum: a one-shot command
+  can't be turned off from the dashboard or reflect live "is it on" state, which is exactly what
+  broke before this redesign. The device clears it itself via `identifyDismissed: true` on its
+  next heartbeat when the user presses Select/Menu on the identify overlay.
+- **No real MAC address or Wi-Fi signal/speed is available to this app, ever** (same class of gate
+  as the device-name one above, except there's no grantable entitlement for MAC at all — it's been
+  categorically blocked for every third-party app since iOS 7). Don't try to read them; the
+  identify overlay's "connection speed" is a real measured download from
+  `GET /devices/:id/speedtest` instead (`ManagementClient.measureThroughputMbps()`), not a link-rate
+  reading.
+- **App version is `"1.<git commit count>"` (e.g. `"1.32"`), not `"1.0 (42)"`.** `MARKETING_VERSION`
+  is set by `scripts/build-ipa.sh` on every build, not frozen at `"1.0"` in the checked-in project —
+  don't reintroduce a parenthetical build-number suffix in `DeviceIdentity.appVersion`.
 
 ## Conventions
 - SwiftUI, Swift 5 mode, `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` (types are MainActor‑isolated

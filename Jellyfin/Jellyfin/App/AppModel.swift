@@ -36,8 +36,17 @@ final class AppModel {
     /// the user can't navigate above it. `nil` shows the multi-library grid.
     private(set) var rootLibrary: BaseItem?
 
-    /// Briefly flashes a full-screen marker when the admin sends "Identify".
-    var identifyFlash = false
+    /// Whether this unit should currently show its "identify" overlay. Reflects
+    /// the server's persistent per-unit state (`HeartbeatResponse.identifying`),
+    /// refreshed on every heartbeat — not a local timer. An admin can turn this
+    /// on/off from the dashboard at any time, and the device itself can clear it
+    /// via `dismissIdentify()` when the user presses the remote.
+    private(set) var isIdentifying = false
+
+    /// The management server's own version, learned from the most recent
+    /// heartbeat — shown on the identify overlay. `nil` until the first
+    /// heartbeat response arrives.
+    private(set) var serverVersion: String?
 
     /// What this unit is currently playing, surfaced in the admin dashboard. Set
     /// by the player; reported on every heartbeat so it clears when playback ends.
@@ -298,6 +307,8 @@ final class AppModel {
             // right now (clearing a finished item).
             let response = try await management.heartbeat(nowPlaying: nowPlaying)
             heartbeatFailures = 0
+            isIdentifying = response.identifying
+            if let serverVersion = response.serverVersion { self.serverVersion = serverVersion }
             if response.configVersion != config.configVersion {
                 let newConfig = try await management.fetchConfig()
                 await apply(newConfig)
@@ -321,8 +332,6 @@ final class AppModel {
             await connectJellyfin()
         case "restart":
             await refreshFromServer(initial: false)
-        case "identify":
-            await flashIdentify()
         case "migrate":
             await migrate(to: command.data, commandId: command.id)
             return // migrate acks the old server itself before switching
@@ -356,9 +365,23 @@ final class AppModel {
         }
     }
 
-    private func flashIdentify() async {
-        identifyFlash = true
-        try? await Task.sleep(for: .seconds(6))
-        identifyFlash = false
+    /// Called when the user dismisses the identify overlay with the physical
+    /// remote. Clears the local flag immediately (instant UI feedback — no
+    /// reason to wait for a round trip) and fires an out-of-band heartbeat
+    /// telling the server to clear its own `identifying` state too, the same
+    /// "push a heartbeat now, don't wait for the loop" pattern `setNowPlaying`
+    /// uses. If that heartbeat is lost, the very next scheduled one will retry
+    /// implicitly the next time this is called — but in practice a single
+    /// dismiss is a one-time user action, not a value that needs reconciling.
+    func dismissIdentify() {
+        isIdentifying = false
+        // Pass the current nowPlaying through explicitly: HeartbeatRequest always
+        // encodes nowPlaying (even as null, so the server can clear a finished
+        // item — see its doc comment), so leaving this out would wrongly clear a
+        // video that's still actually playing.
+        let currentNowPlaying = nowPlaying
+        Task { [weak self] in
+            _ = try? await self?.management.heartbeat(nowPlaying: currentNowPlaying, identifyDismissed: true)
+        }
     }
 }

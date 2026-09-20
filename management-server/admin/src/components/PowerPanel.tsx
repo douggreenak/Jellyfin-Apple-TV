@@ -68,10 +68,13 @@ export default function PowerPanel({ unitId }: { unitId: string }) {
           <Chip size="small" variant="outlined" label="Not paired" />
         )}
       </Stack>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Wake or sleep this Apple TV over the network. “Off” puts it to sleep — Apple TVs have no
-        true power-off.
-      </Typography>
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <strong>This does not turn the TV itself on or off.</strong> Apple provides no way for any
+        app — including this one — to control a connected TV's power over the network. "Turn on" /
+        "Turn off" only wake or sleep the Apple TV device; whether the TV screen also goes dark
+        depends entirely on the TV's own HDMI-CEC behavior when it loses/regains signal, which this
+        server has no control over.
+      </Alert>
 
       {!available && (
         <Alert severity="warning" sx={{ mb: 2 }}>

@@ -31,6 +31,7 @@ import Typography from '@mui/material/Typography';
 import DevicesOtherIcon from '@mui/icons-material/DevicesOther';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
+import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import ReplayIcon from '@mui/icons-material/Replay';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import PlayCircleIcon from '@mui/icons-material/PlayCircle';
@@ -87,15 +88,20 @@ export default function UnitsDashboard() {
   const commandMutation = useMutation({
     mutationFn: ({ id, type }: { id: string; type: CommandType }) =>
       api.sendCommand(id, type),
-    onSuccess: (_data, vars) => {
-      setSnack(
-        vars.type === 'identify'
-          ? 'Identify sent — watch for the on-screen flash.'
-          : 'Reload sent — the unit will refresh shortly.',
-      );
+    onSuccess: () => {
+      setSnack('Reload sent — the unit will refresh shortly.');
       invalidate();
     },
     onError: (err) => setSnack(err instanceof Error ? err.message : 'Command failed.'),
+  });
+
+  const identifyMutation = useMutation({
+    mutationFn: ({ id, on }: { id: string; on: boolean }) => api.setIdentify(id, on),
+    onSuccess: (_data, vars) => {
+      setSnack(vars.on ? 'Identify turned on.' : 'Identify turned off.');
+      invalidate();
+    },
+    onError: (err) => setSnack(err instanceof Error ? err.message : 'Identify command failed.'),
   });
 
   const powerMutation = useMutation({
@@ -296,6 +302,10 @@ export default function UnitsDashboard() {
                         commandPending={
                           commandMutation.isPending && commandMutation.variables?.id === unit.unitId
                         }
+                        onIdentify={(on) => identifyMutation.mutate({ id: unit.unitId, on })}
+                        identifyPending={
+                          identifyMutation.isPending && identifyMutation.variables?.id === unit.unitId
+                        }
                         onPower={(on) => powerMutation.mutate({ id: unit.unitId, on })}
                         powerPending={
                           powerMutation.isPending && powerMutation.variables?.id === unit.unitId
@@ -323,6 +333,10 @@ export default function UnitsDashboard() {
                           onCommand={(type) => commandMutation.mutate({ id: unit.unitId, type })}
                           commandPending={
                             commandMutation.isPending && commandMutation.variables?.id === unit.unitId
+                          }
+                          onIdentify={(on) => identifyMutation.mutate({ id: unit.unitId, on })}
+                          identifyPending={
+                            identifyMutation.isPending && identifyMutation.variables?.id === unit.unitId
                           }
                           onPower={(on) => powerMutation.mutate({ id: unit.unitId, on })}
                           powerPending={
@@ -379,7 +393,7 @@ const BULK_VERB: Record<BulkAction, string> = {
   adopt: 'Adopted',
   unadopt: 'Unadopted',
   reload: 'Reloaded',
-  identify: 'Sent identify to',
+  identify: 'Turned on identify for',
   restart: 'Restarted',
   delete: 'Deleted',
   migrate: 'Moved',
@@ -930,6 +944,8 @@ interface UnitCardProps {
   onOpen: () => void;
   onCommand: (type: CommandType) => void;
   commandPending: boolean;
+  onIdentify: (on: boolean) => void;
+  identifyPending: boolean;
   onPower: (on: boolean) => void;
   powerPending: boolean;
 }
@@ -942,6 +958,8 @@ function UnitCard({
   onOpen,
   onCommand,
   commandPending,
+  onIdentify,
+  identifyPending,
   onPower,
   powerPending,
 }: UnitCardProps) {
@@ -949,6 +967,7 @@ function UnitCard({
   const nowPlayingTitle = status.nowPlaying?.title;
   const compact = density === 'compact';
   const online = status.online;
+  const identifying = status.identifying ?? false;
 
   return (
     <Card
@@ -961,7 +980,11 @@ function UnitCard({
         overflow: 'hidden',
         borderColor: selected ? 'primary.main' : 'divider',
         borderWidth: selected ? 2 : 1,
-        transition: 'box-shadow .15s ease, border-color .15s ease',
+        transition: 'box-shadow .15s ease, border-color .15s ease, opacity .15s ease, filter .15s ease',
+        // Offline units are visually muted at a glance, not just labeled — a
+        // thin accent strip alone was too easy to miss scanning a full grid.
+        opacity: online ? 1 : 0.6,
+        filter: online ? 'none' : 'grayscale(0.9)',
         '&:hover': { boxShadow: '0 4px 16px rgba(16,24,40,0.12)' },
         // Status accent strip down the left edge.
         '&::before': {
@@ -1078,15 +1101,16 @@ function UnitCard({
       </CardContent>
 
       <CardActions sx={{ px: 2, pb: 1.5, pt: 0, pl: 2.5, gap: 1, flexWrap: 'wrap' }}>
-        <Tooltip title="Flash the screen to find this TV">
+        <Tooltip title={identifying ? 'Stop identifying' : 'Highlight this TV on screen'}>
           <span>
             <Button
               size="small"
-              startIcon={<LightbulbIcon />}
-              onClick={() => onCommand('identify')}
-              disabled={!online || commandPending}
+              color={identifying ? 'warning' : 'primary'}
+              startIcon={identifying ? <LightbulbIcon /> : <LightbulbOutlinedIcon />}
+              onClick={() => onIdentify(!identifying)}
+              disabled={!online || identifyPending}
             >
-              Identify
+              {identifying ? 'Identifying…' : 'Identify'}
             </Button>
           </span>
         </Tooltip>
@@ -1138,11 +1162,14 @@ function UnitRow({
   onOpen,
   onCommand,
   commandPending,
+  onIdentify,
+  identifyPending,
   onPower,
   powerPending,
 }: UnitRowProps) {
   const { status } = unit;
   const online = status.online;
+  const identifying = status.identifying ?? false;
   const nowPlayingTitle = status.nowPlaying?.title;
 
   return (
@@ -1158,7 +1185,9 @@ function UnitRow({
         gap: 1.5,
         borderColor: selected ? 'primary.main' : 'divider',
         borderWidth: selected ? 2 : 1,
-        transition: 'border-color .15s ease, box-shadow .15s ease',
+        transition: 'border-color .15s ease, box-shadow .15s ease, opacity .15s ease, filter .15s ease',
+        opacity: online ? 1 : 0.6,
+        filter: online ? 'none' : 'grayscale(0.9)',
         '&:hover': { boxShadow: '0 2px 10px rgba(16,24,40,0.10)' },
         '&::before': {
           content: '""',
@@ -1215,14 +1244,15 @@ function UnitRow({
       />
 
       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
-        <Tooltip title="Flash the screen to find this TV">
+        <Tooltip title={identifying ? 'Stop identifying' : 'Highlight this TV on screen'}>
           <span>
             <IconButton
               size="small"
-              onClick={() => onCommand('identify')}
-              disabled={!online || commandPending}
+              color={identifying ? 'warning' : 'default'}
+              onClick={() => onIdentify(!identifying)}
+              disabled={!online || identifyPending}
             >
-              <LightbulbIcon fontSize="small" />
+              {identifying ? <LightbulbIcon fontSize="small" /> : <LightbulbOutlinedIcon fontSize="small" />}
             </IconButton>
           </span>
         </Tooltip>

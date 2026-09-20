@@ -92,10 +92,12 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `POST /devices/register` | `{ unitId, deviceName, model, tvosVersion, appVersion }` | `{ unit, token }` | First contact. Server creates the unit from the **defaults template**, issues a device token. Idempotent on `unitId`. |
 | `GET /devices/:unitId/config` | — | `UnitConfig` | Device fetches its config. Supports `ETag`/`If-None-Match` → `304`. |
 | `PUT /devices/:unitId/config` | full `UnitConfig` | `UnitConfig` | Device pushes a local settings edit back to the server (`unitId`/`configVersion`/`updatedAt` are server-owned and always overwritten). Currently unused — no on-device settings UI writes to it today. |
-| `POST /devices/:unitId/heartbeat` | `{ ipAddress, nowPlaying, lastError, appVersion, localName }` | `{ ok, configVersion, command }` | Every ~3 s (the fleet is one LAN — see `AppModel.heartbeatInterval`). Updates `lastSeenAt` and (when present) `status.appVersion`/`status.localNetworkName` — the latter also renames the unit if its `displayName` is still the generic "Apple TV" placeholder, see "Real device names via Bonjour" below. Returns current `configVersion` (device re-fetches config if it changed) and any pending `command`. |
+| `POST /devices/:unitId/heartbeat` | `{ ipAddress, nowPlaying, lastError, appVersion, tvosVersion, localName, identifyDismissed }` | `{ ok, configVersion, command, identifying, serverVersion }` | Every ~3 s (the fleet is one LAN — see `AppModel.heartbeatInterval`). Updates `lastSeenAt` and (when present) `status.appVersion`/`status.tvosVersion`/`status.localNetworkName` — the latter also renames the unit if its `displayName` is still the generic "Apple TV" placeholder, see "Real device names via Bonjour" below. `identifyDismissed: true` (sent only on the one heartbeat right after the user dismisses the overlay with the remote) clears `status.identifying`. Returns current `configVersion` (device re-fetches config if it changed), any pending `command`, the current `identifying` state (see "Identify" below), and `serverVersion` (for the identify overlay). |
 | `POST /devices/:unitId/ack` | `{ commandId }` | `{ ok }` | Device acknowledges a command it executed. |
 | `GET /devices/:unitId/live` | — | `{ screenShare }` | Cheap poll (every few seconds) telling the device whether a dashboard operator has its screen mirror open right now. |
 | `POST /devices/:unitId/screenshot` | raw `image/jpeg` (not JSON) | `{ ok }` | Uploads one captured screen frame while `screenShare` is true. In-memory only on the server — only the latest frame per unit is kept. |
+| `GET /devices/:unitId/speedtest` | — | raw `application/octet-stream`, 4 MB | A fixed payload the device downloads and times itself, for the identify overlay's "connection speed" — see "Identify" below for why this exists instead of reading real Wi-Fi link speed. |
+| `POST /devices/:unitId/playback-report` | `{ itemId?, itemName?, durationSeconds, avgBitrateKbps?, indicatedBitrateKbps?, droppedFrames?, stalls?, width?, height? }` | `{ ok }` | One playback session's quality summary, computed client-side from `AVPlayerItem.accessLog()` (`PlayerController.qualitySummary()`) and sent once when a video stops. Feeds the admin Data tab's bitrate/playback-experience charts (§4, §5). Best-effort — a lost report is just one missing data point. |
 
 ### Admin endpoints (Bearer JWT)
 | Method & path | Body | Returns |
@@ -106,7 +108,8 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `GET  /admin/units` | — | `Unit[]` (with live `status.online`) |
 | `GET  /admin/units/:unitId` | — | `Unit` |
 | `PATCH /admin/units/:unitId/config` | partial `UnitConfig` | `Unit` (bumps `configVersion`) |
-| `POST /admin/units/:unitId/command` | `{ type: "reload" \| "identify" \| "restart" \| "migrate", data? }` | `Unit` (`data` is the new management server URL, required for `migrate`) |
+| `POST /admin/units/:unitId/command` | `{ type: "reload" \| "restart" \| "migrate", data? }` | `Unit` (`data` is the new management server URL, required for `migrate`) |
+| `POST /admin/units/:unitId/identify` | `{ on: boolean }` | `Unit` — **sets** (not toggles) `status.identifying`. Not a queued command: see "Identify" below for why. |
 | `POST /admin/units/:unitId/rename` | `{ displayName }` | `Unit` |
 | `POST /admin/units/:unitId/adopt` | — | `Unit` (applies the current defaults template, bumps `configVersion`, marks `adopted`) |
 | `POST /admin/units/:unitId/unadopt` | — | `Unit` (returns the unit to "ready to adopt") |
@@ -130,6 +133,7 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `DELETE /admin/schedules/:id` | — | `{ ok: true }` / `404` |
 | `POST /admin/schedules/:id/run` | — | `{ ok: true, result: string }` / `404` — run a schedule immediately ("test" button) |
 | `GET  /admin/app-version` | — | `{ latestVersion: string \| null, counts: {current,outdated,unknown} }` — the fleet's "latest" version (§2, "App version tracking") plus a live tally. Read-only: there is deliberately no PUT, see below. |
+| `GET  /admin/playback-stats` | — | `{ events: PlaybackEvent[] }` — recent playback-quality sessions (see the `playback-report` device endpoint above), each joined with the unit's current `displayName`. Feeds the Data tab's "Playback quality" section. |
 | `GET  /admin/defaults` | — | `UnitConfig` template (new units inherit this) |
 | `PUT  /admin/defaults` | `UnitConfig` template | updated template |
 | `POST /admin/jellyfin/test` | `{ serverUrl, username, password }` | `{ ok, serverName, version, libraries: [{id,name}] }` |
@@ -139,23 +143,63 @@ Admin auth via `Authorization: Bearer <jwt>`.
 | `POST /admin/import?replace=true` | `{ version?, exportedAt?, defaults, units[] }` (from `GET /export`) | `{ ok: true, imported, removed }` — restores a snapshot; without `?replace=true` extra existing units are left alone, with it they're deleted |
 
 Commands flow **server → device** by being returned in the heartbeat response; the device
-runs them and `POST`s an `ack`. `identify` flashes a full-screen marker so an operator can tell
-which physical TV is which. `migrate` ("move to new server") is special: the device acks the
+runs them and `POST`s an `ack`. `migrate` ("move to new server") is special: the device acks the
 **old** server first, then re-points `managementBaseURL` at `data` and reconnects with its
 existing identity — no re-adoption needed if the new server already has the migrated records.
+
+### Identify
+
+Shows a full-screen "here I am" overlay on the physical TV so an operator can tell which unit
+is which — but unlike `reload`/`restart`/`migrate`, this is **not** a queued command. It used to
+be (a one-shot "identify" command, auto-clearing after a timer with no persistent state), which
+meant the admin dashboard couldn't show whether it was currently active, couldn't turn it back
+off, and the device itself had no way to signal "I've been dismissed." It's now a persistent
+`status.identifying` flag instead: `POST /admin/units/:unitId/identify {on}` sets it directly, it
+rides every heartbeat response (`identifying`) so the device shows/hides its overlay accordingly,
+and the device can clear it itself (`identifyDismissed: true` on its next heartbeat) when the
+person standing in front of the TV presses Select or Menu on the physical remote. The admin's own
+Identify button reflects this live (filled lightbulb + "Stop identifying" while active), and a
+bulk "Identify" action still exists (turns it on for every selected unit; turning off is
+per-unit).
+
+The overlay itself shows more than just the unit's name: IP address (read locally via
+`NetworkInfo.localIPAddress` — standard BSD `getifaddrs`, no entitlement needed), app version,
+server version (from the heartbeat's `serverVersion`), tvOS version, unit ID, and a measured
+connection speed. That last one deserves an explainer: tvOS gives third-party apps no way to read
+real Wi-Fi link speed or signal strength — that needs Apple's
+`com.apple.developer.networking.wifi-info` entitlement, which must be formally requested from
+Apple and, even if granted, only exposes RSSI/SSID/BSSID, never a real Mbps figure. **A real MAC
+address is even less available: no entitlement unlocks it for any third-party app**, a categorical
+privacy restriction since iOS 7 (same class of restriction as the gated device-name entitlement,
+except there's no grantable path around this one at all). So the overlay shows neither: instead,
+`GET /devices/:unitId/speedtest` serves a fixed 4 MB payload the device downloads and times itself
+(`ManagementClient.measureThroughputMbps()`) — a real measured transfer to the server this unit
+actually talks to, which needs no Apple approval and arguably matters more than raw PHY rate
+anyway.
 
 ### Apple TV remote control & power (pyatv)
 
 The management server can reach a physical Apple TV directly over Apple's Companion protocol
 (via the `pyatv`/`atvremote` CLI on the server box), independent of the Jellyfin app's own
 management-client loop. One in-browser pairing per unit (scan → PIN pairing) yields a Companion
-credentials string, stored server-side and reused for both **power** (`turn_on`/`turn_off` —
-Apple TVs have no true hard-off) and **remote-control key relay** (`up`/`down`/`left`/`right`/
-`select`/`menu`/`play_pause`/`top_menu`, indistinguishable from a physical Siri Remote press).
+credentials string, stored server-side and reused for both **power** (`turn_on`/`turn_off`) and
+**remote-control key relay** (`up`/`down`/`left`/`right`/`select`/`menu`/`play_pause`/`top_menu`,
+indistinguishable from a physical Siri Remote press).
+
+**"Power" here means the Apple TV's own sleep state, never the connected TV's actual power.**
+pyatv has no way to trigger real HDMI-CEC power-off of the TV — confirmed against pyatv's own
+docs/FAQ and real-world reports before building anything here: `turn_on`/`turn_off` only ever
+sleeps/wakes the Apple TV device itself, over the network, regardless of protocol (Companion or
+MRP). There is no software path from this server to the TV's actual power state, and no pyatv
+command distinct from `turn_on`/`turn_off` that does more. `PowerPanel.tsx` and the Schedule page
+say this explicitly (an `Alert`, not just a caption line) so nobody mistakes "Turn off" for "the TV
+screen goes dark" — whether it actually does depends entirely on the TV's own HDMI-CEC behavior
+when the Apple TV's HDMI output line drops, which this server has no control over.
+
 **Power schedules** layer on top: a schedule (name, on/off, target all/group/unit, `HH:MM` +
 weekdays) is checked every 20s server-side and fires against its target units' stored pairings —
 this is a server cron, not a device feature, and requires the same per-unit pairing as manual
-power/remote control.
+power/remote control. Same limitation applies: a schedule sleeps/wakes the Apple TV, not the TV.
 
 ### App version tracking
 
@@ -181,9 +225,19 @@ independent of when this particular server process last redeployed.
 Each unit's real version arrives via register + every heartbeat (never stale, even across an app
 update — see §1), and `appVersionStatus` on each `Unit` — `"current"`, `"outdated"`, or `"unknown"`
 (neither source has a version yet, or the unit hasn't reported one) — is a straight string-equality
-check: `status.appVersion` already encodes an always-increasing build number, so there's no
+check: `status.appVersion` is already an always-increasing number (see below), so there's no
 ordering to parse, just "is this the exact build we most recently cut." The Units dashboard badges
 outdated units.
+
+**Version format is a plain `"1.<git commit count>"` (e.g. `"1.32"`), not `"1.0 (42)"`.** It used
+to be marketing version + a parenthetical build number, with the marketing half frozen at `"1.0"`
+forever and the real counter hidden in parentheses — `scripts/build-ipa.sh` now sets
+`MARKETING_VERSION="1.$BUILD_NUMBER"` directly (a build-setting override, same mechanism as
+`CURRENT_PROJECT_VERSION` — nothing is written back to the checked-in project file) and
+`DeviceIdentity.appVersion` reports just that string, no parenthetical needed since it already
+changes on every build. `CURRENT_PROJECT_VERSION`/`CFBundleVersion` (invisible to users, but
+required by Apple to be a monotonically increasing integer) is still set to the same commit count
+underneath.
 
 The management server (backend + admin dashboard, which ship together) gets a version from the
 same counter: `scripts/build-ipa.sh` stamps `1.0.<BUILD_NUMBER>` into both `package.json` files on
@@ -319,10 +373,14 @@ Jellyfin/
     JellyfinModels.swift     auth, BaseItem, metadata helpers
   Services/
     DeviceIdentity.swift     persistent unitId + device token + management server address (UserDefaults)
-    ManagementClient.swift   register / fetchConfig / heartbeat / ack / live-status poll / screenshot upload
+    ManagementClient.swift   register / fetchConfig / heartbeat / ack / live-status poll / screenshot
+                             upload / speedtest download / playback-quality report
     JellyfinClient.swift     auth / views / items / images / HLS playback URL / playback reporting
     ScreenCaptureService.swift  snapshots the app's own window to JPEG for the dashboard's live screen mirror
     LocalDeviceNameResolver.swift  recovers the unit's real name via Bonjour (§2, "Real device names")
+    NetworkInfo.swift        this device's local IPv4 (getifaddrs, no entitlement) for the identify
+                             overlay — see §2, "Identify" for why MAC address and Wi-Fi signal/speed
+                             aren't here too
   DesignSystem/
     Theme.swift              colors, metrics, gradients (driven by the server's accentColorHex)
     CachedAsyncImage.swift   in-memory image cache + fade-in (avoids AsyncImage's re-fetch-on-rerender)
@@ -332,7 +390,9 @@ Jellyfin/
                              into this I am" and just reads as clutter on a folder icon)
     Components.swift         LoadingView, ErrorView, ClockView, SectionHeaderView
   Views/
-    ConnectingView.swift     splash + "management server required" bootstrap + waiting-for-content + Identify
+    ConnectingView.swift     splash + "management server required" bootstrap + waiting-for-content +
+                             IdentifyOverlay (see §2, "Identify" — driven by AppModel.isIdentifying,
+                             not a local timer; dismissible with Select/Menu via .onExitCommand)
     LibraryView.swift        the folder browser: libraries grid, then folder/season contents
     PlayerView.swift         AVPlayer — starts paused on the first frame, resumes from saved position,
                              reports start/stop to Jellyfin + the management server. That initial
@@ -346,7 +406,12 @@ Jellyfin/
                              spinner is still showing for that same first frame — the two were
                              stacking on top of each other. Goes away for good on the user's first
                              real Play press; later pauses mid-viewing don't need the same
-                             explanation.
+                             explanation. On stop, `PlayerController.qualitySummary()` reads
+                             AVFoundation's own `AVPlayerItem.accessLog()` (weighted-average
+                             `observedBitrate`, `indicatedBitrate`, summed `numberOfDroppedVideoFrames`/
+                             `numberOfStalls`, plus `presentationSize`) and reports it via
+                             `ManagementClient.reportPlaybackQuality` — real per-session playback
+                             quality for the admin Data tab, not anything guessed from the request URL.
 ```
 
 `Jellyfin/Support/Info.plist` (a sibling of `Jellyfin/Jellyfin/`, deliberately **outside** it) supplies
@@ -398,17 +463,22 @@ management-server/
   server/                    Node + TypeScript backend
     src/
       index.ts               bootstrap, config, listen, starts the scheduler
-      db.ts                  better-sqlite3 setup + migrations (units, settings, schedules tables)
+      db.ts                  better-sqlite3 setup + migrations (units, settings, schedules,
+                             playback_events tables)
       schema.ts              zod schemas mirroring UNIT_CONFIG_SCHEMA.json + admin/device request bodies
       auth.ts                admin JWT + device-token middleware + change-password
       atv.ts                 pyatv Companion protocol: power on/off, remote key relay, scan + pairing
       scheduler.ts           power on/off schedule ticker (runs every 20s)
       liveScreen.ts          in-memory screen-mirror state (keepalive flag + latest frame per unit)
-      routes/devices.ts      register / config (GET+PUT) / heartbeat / ack / live / screenshot upload
-      routes/admin.ts        auth + units CRUD + bulk actions + power/remote/schedules + export/import + jellyfin + defaults
+      routes/devices.ts      register / config (GET+PUT) / heartbeat / ack / live / screenshot upload /
+                             speedtest / playback-report
+      routes/admin.ts        auth + units CRUD + bulk actions + identify + power/remote/schedules +
+                             playback-stats + export/import + jellyfin + defaults
       jellyfin.ts            server-side Jellyfin credential test + browse/resolve for the folder picker
       defaults.ts            seed default UnitConfig template
-      appVersion.ts          reads latest-app-version.json (generated by build-ipa.sh, mtime-cached)
+      appVersion.ts          polls GitHub (fallback: local file) for the fleet's "latest app version"
+      serverVersion.ts       this server's own version, read from package.json — shared by /health and
+                             the device heartbeat/register responses (identify overlay)
       util.ts                toUnit/deepMerge/status helpers, PendingCommand + UnitStatus types
     package.json, tsconfig.json, .env.example
   admin/                     React + Vite + MUI (Material Design) dashboard
@@ -416,11 +486,15 @@ management-server/
       main.tsx, App.tsx, theme.ts, auth.tsx, colorMode.tsx
       api/client.ts          typed fetch wrapper + auth token storage
       pages/Login.tsx
-      pages/UnitsDashboard.tsx   cards/table of all units, online dot, quick actions, bulk fleet actions
+      pages/UnitsDashboard.tsx   cards/table of all units (offline ones visibly greyed out — dimmed
+                                 opacity + grayscale filter on the whole card/row, not just the
+                                 status chip), quick actions, bulk fleet actions, export/import
       pages/UnitDetail.tsx       full config editor (tabs: General, Jellyfin, Appearance, Playback) + remote/power panel
       pages/Defaults.tsx         shared Jellyfin account + default template + "push to all" button
       pages/Schedule.tsx         power on/off schedule list + create/edit/run/delete
-      pages/Data.tsx             export/import full server-config snapshot
+      pages/Data.tsx             fleet metrics/charts: health, software, configuration, and
+                                 per-device/per-video playback quality (bitrate, stalls, dropped
+                                 frames — from GET /admin/playback-stats)
       components/AppShell.tsx, ChangePasswordDialog.tsx, ConfirmDialog.tsx,
                  PairDialog.tsx, PowerPanel.tsx, RemoteScreenPanel.tsx,
                  SaveBar.tsx, ScheduleDialog.tsx, StatusDot.tsx, TabPanel.tsx
@@ -433,9 +507,12 @@ management-server/
 
 Data store: **SQLite** (`better-sqlite3`) — one file, perfect for a single local box, no
 external DB to operate: the `units` table (config + telemetry), a generic `settings` key-value
-table (admin password hash, per-unit pyatv Companion credentials under `atvpower:<unitId>`), and
-`schedules` (power on/off schedules). Admin password + JWT secret come from `.env` initially;
-the admin password can later be changed from the dashboard, which overrides `.env` from then on.
+table (admin password hash, per-unit pyatv Companion credentials under `atvpower:<unitId>`),
+`schedules` (power on/off schedules), and `playback_events` (per-session playback-quality reports
+— see "Identify" above's sibling feature in §2's device-endpoints table, `playback-report`; capped
+at the most recent 5000 rows, trimmed on every insert, since this is a rolling recent-activity view
+for the Data tab, not an archive). Admin password + JWT secret come from `.env` initially; the
+admin password can later be changed from the dashboard, which overrides `.env` from then on.
 
 ---
 

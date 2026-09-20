@@ -6,6 +6,7 @@ import { initDb } from "./db";
 import { initAuth } from "./auth";
 import { startScheduler } from "./scheduler";
 import { startAppVersionPolling } from "./appVersion";
+import { SERVER_VERSION } from "./serverVersion";
 import { setOnlineWindowSeconds } from "./util";
 import { devicesRouter } from "./routes/devices";
 import { adminRouter } from "./routes/admin";
@@ -34,16 +35,6 @@ const ADMIN_ORIGIN = process.env.ADMIN_ORIGIN ?? "http://localhost:5173";
 // Built admin dashboard (React) — served by this server so the web UI and the
 // API share one origin/URL. Resolves for both `tsx src` and `node dist` runs.
 const ADMIN_DIST = process.env.ADMIN_DIST ?? path.resolve(__dirname, "../../admin/dist");
-// This server's own version — bumped by scripts/build-ipa.sh on every push
-// (1.0.<git commit count>, same counter as the tvOS app's build number).
-// Read straight from package.json rather than duplicating it anywhere.
-const SERVER_VERSION = (() => {
-  try {
-    return (JSON.parse(fs.readFileSync(path.resolve(__dirname, "../package.json"), "utf8")) as { version?: string }).version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-})();
 
 // ----- Init subsystems -----
 initDb(DB_PATH);

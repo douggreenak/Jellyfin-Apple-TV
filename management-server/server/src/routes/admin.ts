@@ -15,6 +15,7 @@ import {
   getSchedule,
   putSchedule,
   deleteSchedule,
+  listPlaybackEvents,
   type UnitRow,
   type PowerSchedule,
 } from "../db";
@@ -34,6 +35,7 @@ import {
   changePasswordSchema,
   unitConfigPatchSchema,
   commandSchema,
+  setIdentifySchema,
   renameSchema,
   unitPowerSchema,
   remoteKeySchema,
@@ -58,11 +60,21 @@ import {
   emptyStatus,
   computeAppVersionStatus,
   type PendingCommand,
+  type UnitStatus,
 } from "../util";
 
 export const adminRouter = Router();
 
-type CommandType = "reload" | "identify" | "restart" | "migrate";
+type CommandType = "reload" | "restart" | "migrate";
+
+/** Set (not toggle) a unit's persistent identify state — see UnitStatus.identifying. */
+function setIdentifying(row: UnitRow, on: boolean): UnitRow {
+  const status = JSON.parse(row.status) as UnitStatus;
+  status.identifying = on;
+  const updated: UnitRow = { ...row, status: JSON.stringify(status) };
+  updateUnitRow(updated);
+  return updated;
+}
 
 /** Apply the current defaults template to a unit and mark it adopted. Returns the saved row. */
 function adoptRow(row: UnitRow): UnitRow {
@@ -258,6 +270,31 @@ adminRouter.post(
 );
 
 /**
+ * POST /units/:unitId/identify
+ * Sets (not toggles) the unit's persistent identify state — delivered on the
+ * device's next heartbeat and reflected immediately in the admin UI's own
+ * button state (a plain GET /units/:unitId or list refetch already shows it,
+ * no separate "is it active" endpoint needed). See UnitStatus.identifying.
+ */
+adminRouter.post(
+  "/units/:unitId/identify",
+  requireAdmin,
+  (req: Request, res: Response) => {
+    const parsed = setIdentifySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body", details: parsed.error.format() });
+      return;
+    }
+    const row = getUnitRow(req.params.unitId);
+    if (!row) {
+      res.status(404).json({ error: "Unit not found" });
+      return;
+    }
+    res.json(toUnit(setIdentifying(row, parsed.data.on)));
+  }
+);
+
+/**
  * POST /units/:unitId/rename
  * Renames the unit. Mirrors displayName into config + bumps configVersion so
  * the device picks up the new name.
@@ -343,7 +380,14 @@ adminRouter.post("/units/bulk", requireAdmin, (req: Request, res: Response) => {
         updateUnitRow({ ...row, adopted: 0 });
         affected++;
         break;
-      default: // reload | identify | restart | migrate
+      case "identify":
+        // Bulk identify only ever turns it ON (walk the room, dismiss each one
+        // on its own remote, or turn individual units off from the dashboard) —
+        // see setIdentifying's doc comment for why this isn't a queued command.
+        setIdentifying(row, true);
+        affected++;
+        break;
+      default: // reload | restart | migrate
         queueCommand(row, action, action === "migrate" ? data : undefined);
         affected++;
     }
@@ -720,6 +764,22 @@ adminRouter.get("/app-version", requireAdmin, (_req: Request, res: Response) => 
     counts[computeAppVersionStatus(unit.status.appVersion, latestVersion ?? undefined)]++;
   }
   res.json({ latestVersion, counts });
+});
+
+/**
+ * GET /playback-stats
+ * Recent playback-quality sessions (see PlaybackEventRow) for the Data tab's
+ * per-device / per-video bitrate and playback-experience charts. Joins in
+ * each unit's current displayName (a raw unitId is meaningless in a chart) —
+ * events from a since-deleted unit fall back to the bare unitId.
+ */
+adminRouter.get("/playback-stats", requireAdmin, (_req: Request, res: Response) => {
+  const names = new Map(listUnitRows().map((row) => [row.unitId, row.displayName]));
+  const events = listPlaybackEvents().map((event) => ({
+    ...event,
+    unitDisplayName: names.get(event.unitId) ?? event.unitId,
+  }));
+  res.json({ events });
 });
 
 adminRouter.get("/defaults", requireAdmin, (_req: Request, res: Response) => {

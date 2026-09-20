@@ -54,6 +54,22 @@ export function initDb(dbPath: string): Database.Database {
       id   TEXT PRIMARY KEY,
       data TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS playback_events (
+      id                   TEXT PRIMARY KEY,
+      unitId               TEXT NOT NULL,
+      itemId               TEXT,
+      itemName             TEXT,
+      recordedAt           TEXT NOT NULL,
+      durationSeconds      REAL,
+      avgBitrateKbps       REAL,
+      indicatedBitrateKbps REAL,
+      droppedFrames        INTEGER,
+      stalls               INTEGER,
+      width                INTEGER,
+      height               INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_playback_events_recordedAt ON playback_events(recordedAt);
   `);
 
   // Migrate older databases that predate the `adopted` column.
@@ -286,4 +302,55 @@ export function putSchedule(schedule: PowerSchedule): void {
 
 export function deleteSchedule(id: string): boolean {
   return getDb().prepare("DELETE FROM schedules WHERE id = ?").run(id).changes > 0;
+}
+
+/* -------------------------- Playback quality log -------------------------- */
+
+/**
+ * One playback session's quality summary, reported by a unit when a video
+ * stops (see PlayerView.swift / ManagementClient.reportPlaybackQuality and
+ * POST /devices/:unitId/playback-report). Feeds the admin Data tab's
+ * per-device / per-video bitrate and playback-experience charts. Nullable
+ * numeric fields reflect AVFoundation's access log sometimes having nothing
+ * useful to report (e.g. a session too short to log an event).
+ */
+export interface PlaybackEventRow {
+  id: string;
+  unitId: string;
+  itemId: string | null;
+  itemName: string | null;
+  recordedAt: string;
+  durationSeconds: number | null;
+  avgBitrateKbps: number | null;
+  indicatedBitrateKbps: number | null;
+  droppedFrames: number | null;
+  stalls: number | null;
+  width: number | null;
+  height: number | null;
+}
+
+/** Keep the log bounded — this is a rolling recent-activity view, not an archive. */
+const MAX_PLAYBACK_EVENTS = 5000;
+
+export function insertPlaybackEvent(row: PlaybackEventRow): void {
+  getDb()
+    .prepare(
+      `INSERT INTO playback_events
+        (id, unitId, itemId, itemName, recordedAt, durationSeconds, avgBitrateKbps, indicatedBitrateKbps, droppedFrames, stalls, width, height)
+       VALUES
+        (@id, @unitId, @itemId, @itemName, @recordedAt, @durationSeconds, @avgBitrateKbps, @indicatedBitrateKbps, @droppedFrames, @stalls, @width, @height)`
+    )
+    .run(row);
+  getDb()
+    .prepare(
+      `DELETE FROM playback_events WHERE id NOT IN
+        (SELECT id FROM playback_events ORDER BY recordedAt DESC LIMIT ?)`
+    )
+    .run(MAX_PLAYBACK_EVENTS);
+}
+
+export function listPlaybackEvents(limit = 500): PlaybackEventRow[] {
+  return getDb()
+    .prepare("SELECT * FROM playback_events ORDER BY recordedAt DESC LIMIT ?")
+    .all(limit) as PlaybackEventRow[];
 }

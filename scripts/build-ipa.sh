@@ -18,15 +18,17 @@
 # -allowProvisioningUpdates so Xcode can fetch/create the Ad Hoc provisioning
 # profile itself the first time (no App Store Connect access needed).
 
-# Every build gets a distinct, monotonically-increasing CFBundleVersion (the
-# git commit count at HEAD) so DeviceIdentity.appVersion ("1.0 (42)") actually
-# changes from build to build — the whole point of the fleet version-check
-# feature. MARKETING_VERSION ("1.0") is left as whatever's checked into the
-# project; bump that by hand in Xcode when you want a real semantic version
-# change. This overrides the pbxproj's CURRENT_PROJECT_VERSION for just this
-# build — nothing is written back to the checked-in project file. The same
-# BUILD_NUMBER also becomes the web app's patch version (see below) — one
-# counter, two products, both traceable to the exact commit that built them.
+# Every build gets a distinct, monotonically-increasing version: MARKETING_VERSION
+# is "1.<git commit count>" (e.g. "1.32", "1.33", ...), computed here and passed as
+# a build-setting override — nothing is written back to the checked-in project
+# file. DeviceIdentity.appVersion reports this string alone (no "(build)"
+# parenthetical): a plain, always-incrementing "1.32" reads far better than the
+# old "1.0 (31)" and is just as good a fleet version-check key, since it changes
+# on every single build. CURRENT_PROJECT_VERSION (CFBundleVersion, invisible to
+# users but required by Apple to be a monotonically increasing integer) is set to
+# the same commit count. The same counter also becomes the web app's patch
+# version (see below) — one counter, two products, both traceable to the exact
+# commit that built them.
 
 set -euo pipefail
 export PATH="/opt/homebrew/bin:$PATH"
@@ -38,9 +40,8 @@ OUT_IPA="$REPO_ROOT/builds/Jellyfin.ipa"
 APP_VERSION_FILE="$REPO_ROOT/management-server/server/latest-app-version.json"
 
 BUILD_NUMBER="$(git -C "$REPO_ROOT" rev-list --count HEAD)"
-MARKETING_VERSION="$(cd "$PROJECT_DIR" && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project Jellyfin.xcodeproj -scheme Jellyfin -showBuildSettings 2>/dev/null | awk -F' = ' '/ MARKETING_VERSION /{print $2; exit}')"
-MARKETING_VERSION="${MARKETING_VERSION:-1.0}"
-APP_VERSION="$MARKETING_VERSION ($BUILD_NUMBER)"
+MARKETING_VERSION="1.$BUILD_NUMBER"
+APP_VERSION="$MARKETING_VERSION"
 WEB_VERSION="1.0.$BUILD_NUMBER"
 
 WORK_DIR="$(mktemp -d)"
@@ -48,7 +49,7 @@ ARCHIVE_PATH="$WORK_DIR/Jellyfin.xcarchive"
 EXPORT_DIR="$WORK_DIR/export"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-echo "==> Archiving Jellyfin (tvOS device, Ad Hoc) — version $MARKETING_VERSION ($BUILD_NUMBER)…"
+echo "==> Archiving Jellyfin (tvOS device, Ad Hoc) — version $MARKETING_VERSION…"
 cd "$PROJECT_DIR"
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
   -project Jellyfin.xcodeproj -scheme Jellyfin \
@@ -57,6 +58,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
   DEVELOPMENT_TEAM=THW3L89YM6 \
   CODE_SIGN_STYLE=Automatic \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+  MARKETING_VERSION="$MARKETING_VERSION" \
   archive
 
 echo "==> Exporting Ad Hoc IPA…"

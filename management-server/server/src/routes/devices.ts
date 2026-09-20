@@ -5,6 +5,7 @@ import {
   insertUnitRow,
   updateUnitRow,
   getDefaultsTemplate,
+  insertPlaybackEvent,
   type UnitRow,
 } from "../db";
 import { requireDevice } from "../auth";
@@ -14,17 +15,20 @@ import {
   heartbeatSchema,
   ackSchema,
   unitConfigSchema,
+  playbackReportSchema,
 } from "../schema";
 import type { UnitConfig } from "../schema";
 import {
   toUnit,
   newToken,
+  newId,
   deepMerge,
   emptyStatus,
   type UnitStatus,
   type PendingCommand,
 } from "../util";
 import { isLive, storeFrame } from "../liveScreen";
+import { SERVER_VERSION } from "../serverVersion";
 
 export const devicesRouter = Router();
 
@@ -214,6 +218,12 @@ devicesRouter.post(
     // never re-registers — appVersion is refreshed here on every heartbeat instead
     // of only at register, or the server's view of it would go stale forever.
     if (parsed.data.appVersion !== undefined) status.appVersion = parsed.data.appVersion;
+    // Same reasoning: a tvOS software update can land between registers too.
+    if (parsed.data.tvosVersion !== undefined) status.tvosVersion = parsed.data.tvosVersion;
+    // The device itself clears identify state when the user dismisses the
+    // overlay with the physical remote — see UnitStatus.identifying's doc
+    // comment. Only ever sent `true`; there's nothing to do on its absence.
+    if (parsed.data.identifyDismissed) status.identifying = false;
 
     // localName is the unit's real name, recovered client-side over Bonjour
     // (UIDevice.current.name is gated by Apple and just says "Apple TV" — see
@@ -234,7 +244,13 @@ devicesRouter.post(
       ? (JSON.parse(row.pendingCommand) as PendingCommand)
       : null;
 
-    res.json({ ok: true, configVersion: row.configVersion, command });
+    res.json({
+      ok: true,
+      configVersion: row.configVersion,
+      command,
+      identifying: status.identifying ?? false,
+      serverVersion: SERVER_VERSION,
+    });
   }
 );
 
@@ -310,6 +326,77 @@ devicesRouter.post(
       return;
     }
     storeFrame(req.params.unitId, req.body, "image/jpeg");
+    res.json({ ok: true });
+  }
+);
+
+/**
+ * GET /devices/:unitId/speedtest
+ * A fixed-size payload the device downloads and times itself, to measure real
+ * throughput to this server. Exists because tvOS gives third-party apps no way
+ * to read actual Wi-Fi link speed or signal strength (that needs Apple's
+ * `com.apple.developer.networking.wifi-info` entitlement, which must be
+ * requested from Apple and still wouldn't expose a real Mbps figure) — an
+ * actual measured transfer is the only number this app can produce without
+ * that entitlement, and arguably more useful anyway: it reflects real usable
+ * bandwidth to the server a unit actually talks to, not raw PHY rate. Sized at
+ * 4 MB — big enough to smooth out connection-setup overhead on a LAN, small
+ * enough to finish in well under a second on anything reasonable. The buffer
+ * is precomputed once at module load, not per-request.
+ */
+const SPEEDTEST_PAYLOAD = Buffer.alloc(4 * 1024 * 1024);
+devicesRouter.get(
+  "/:unitId/speedtest",
+  requireDevice,
+  (req: Request, res: Response) => {
+    if (req.unitId !== req.params.unitId) {
+      res.status(403).json({ error: "Token does not match unitId" });
+      return;
+    }
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(SPEEDTEST_PAYLOAD);
+  }
+);
+
+/**
+ * POST /devices/:unitId/playback-report
+ * A playback session's quality summary (see PlaybackEventRow's doc comment),
+ * sent once when a video stops. Best-effort on the device side — a failed
+ * report just means one missing data point for the admin Data tab, nothing
+ * the device should retry or block on.
+ */
+devicesRouter.post(
+  "/:unitId/playback-report",
+  requireDevice,
+  (req: Request, res: Response) => {
+    if (req.unitId !== req.params.unitId) {
+      res.status(403).json({ error: "Token does not match unitId" });
+      return;
+    }
+    const parsed = playbackReportSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body", details: parsed.error.format() });
+      return;
+    }
+    if (!getUnitRow(req.params.unitId)) {
+      res.status(404).json({ error: "Unit not found" });
+      return;
+    }
+    insertPlaybackEvent({
+      id: newId(),
+      unitId: req.params.unitId,
+      itemId: parsed.data.itemId ?? null,
+      itemName: parsed.data.itemName ?? null,
+      recordedAt: new Date().toISOString(),
+      durationSeconds: parsed.data.durationSeconds,
+      avgBitrateKbps: parsed.data.avgBitrateKbps ?? null,
+      indicatedBitrateKbps: parsed.data.indicatedBitrateKbps ?? null,
+      droppedFrames: parsed.data.droppedFrames ?? null,
+      stalls: parsed.data.stalls ?? null,
+      width: parsed.data.width ?? null,
+      height: parsed.data.height ?? null,
+    });
     res.json({ ok: true });
   }
 );
