@@ -151,6 +151,25 @@ final class AppModel {
         if attempting { return }
         attempting = true
         defer { attempting = false }
+        await performConnect(allowReregister: true)
+    }
+
+    /// Does the actual register-or-fetch-config handshake. Split out from
+    /// `attemptConnect()` so the 401 retry below can call back in without
+    /// tripping the `attempting` re-entrancy guard (which would just make the
+    /// retry a no-op).
+    ///
+    /// A 401 from `fetchConfig()` means the server doesn't recognize this
+    /// unit's device token — e.g. its database was rebuilt from scratch after
+    /// the original disk died, so it has no record of any previously
+    /// registered Apple TV, even though the token itself is still sitting in
+    /// local storage from before the crash. That's not a real network/server
+    /// outage, so treating it like one (as before) left the unit stuck showing
+    /// "Lost connection" forever. Registration is always allowed, so instead
+    /// drop the stale token and re-register once. `allowReregister` bounds
+    /// this to a single retry — if `register()` itself somehow also 401s,
+    /// fall through to the normal blocked state rather than looping forever.
+    private func performConnect(allowReregister: Bool) async {
         do {
             let newConfig: UnitConfig
             if identity.deviceToken == nil {
@@ -161,6 +180,9 @@ final class AppModel {
             heartbeatFailures = 0
             connectionFailed = false
             await apply(newConfig, force: true)
+        } catch ManagementError.http(401) where allowReregister {
+            identity.deviceToken = nil
+            await performConnect(allowReregister: false)
         } catch {
             connectionFailed = true
             phase = .needsManagementServer

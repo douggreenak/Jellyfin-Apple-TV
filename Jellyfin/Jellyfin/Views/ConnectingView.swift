@@ -50,6 +50,12 @@ struct ManagementSetupView: View {
     @Environment(AppModel.self) private var model
     @State private var address: String = ""
     @State private var connecting = false
+    /// Non-nil only when this is shown as the manual "Change Server Address"
+    /// escape hatch from an already-registered unit's stuck-connection screen
+    /// (see RootView) — lets an operator back out with the physical remote
+    /// without submitting an address. Nil on first-run setup, where there's
+    /// nothing to cancel back to.
+    var onCancel: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 26) {
@@ -91,6 +97,12 @@ struct ManagementSetupView: View {
             .buttonStyle(.borderedProminent)
             .disabled(connecting || address.trimmingCharacters(in: .whitespaces).isEmpty)
 
+            if let onCancel {
+                Button("Cancel", action: onCancel)
+                    .buttonStyle(.bordered)
+                    .disabled(connecting)
+            }
+
             Text("This unit's ID: \(model.identity.unitId)")
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
@@ -100,6 +112,7 @@ struct ManagementSetupView: View {
         .animation(.easeInOut(duration: 0.2), value: model.connectionFailed)
         .animation(.easeInOut(duration: 0.2), value: connecting)
         .onAppear { if address.isEmpty { address = model.identity.managementBaseURL } }
+        .onExitCommand { onCancel?() }
     }
 
     private func connect() {

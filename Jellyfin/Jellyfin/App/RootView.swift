@@ -11,6 +11,11 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    /// True while an operator has opened the manual "Change Server Address"
+    /// escape hatch from the stuck-connection screen (see the
+    /// `.needsManagementServer` case below). Reset whenever the phase moves
+    /// away from that state, so a later unrelated blip doesn't reopen it.
+    @State private var showingServerAddressEntry = false
 
     var body: some View {
         ZStack {
@@ -41,6 +46,11 @@ struct RootView: View {
         .animation(.smooth, value: model.phase)
         .animation(.smooth, value: model.isIdentifying)
         .task { await model.start() }
+        .onChange(of: model.phase) {
+            if model.phase != .needsManagementServer {
+                showingServerAddressEntry = false
+            }
+        }
     }
 
     @ViewBuilder
@@ -65,12 +75,20 @@ struct RootView: View {
             // already knows it and is retrying automatically in the background.
             if model.identity.deviceToken == nil {
                 ManagementSetupView()
+            } else if showingServerAddressEntry {
+                // Manual escape hatch: an operator can point this unit at any
+                // server/IP/port at will, without MDM having to fully wipe and
+                // reinstall the app (which doesn't actually clear local storage
+                // anyway — see AppModel's device-token doc comments).
+                ManagementSetupView(onCancel: { showingServerAddressEntry = false })
             } else {
                 ErrorView(
                     title: "Lost connection to the management server",
                     message: "This Apple TV can't reach \(model.identity.managementBaseURL) right now. It will keep retrying automatically.",
                     retryTitle: "Retry Now",
-                    retry: { model.retry() }
+                    retry: { model.retry() },
+                    secondaryTitle: "Change Server Address",
+                    secondaryAction: { showingServerAddressEntry = true }
                 )
             }
         case .error(let message):

@@ -34,6 +34,10 @@ struct ErrorView: View {
     var systemImage: String = "exclamationmark.triangle.fill"
     var retryTitle: String = "Try Again"
     var retry: (() -> Void)? = nil
+    /// An optional less-prominent second action shown alongside `retry` — e.g.
+    /// letting an operator override something rather than just retrying.
+    var secondaryTitle: String? = nil
+    var secondaryAction: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 28) {
@@ -53,6 +57,10 @@ struct ErrorView: View {
                 Button(retryTitle, action: retry)
                     .buttonStyle(.borderedProminent)
                     .padding(.top, 8)
+            }
+            if let secondaryTitle, let secondaryAction {
+                Button(secondaryTitle, action: secondaryAction)
+                    .buttonStyle(.bordered)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
