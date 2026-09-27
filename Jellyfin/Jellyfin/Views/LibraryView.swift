@@ -73,9 +73,9 @@ struct LibraryFolderView: View {
             case .loading:
                 LoadingView(label: "Loading \(parent.name)…").frame(minHeight: 600)
             case .failed(let message):
-                ErrorView(title: "Couldn't load this folder", message: message) {
+                ErrorView(title: "Couldn't load this folder", message: message, retry: {
                     Task { await load() }
-                }
+                })
                 .frame(minHeight: 600)
             case .loaded:
                 if items.isEmpty {
