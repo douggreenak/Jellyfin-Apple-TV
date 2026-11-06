@@ -67,6 +67,13 @@ final class AppModel {
     private(set) var connectionFailed = false
     private var attempting = false
 
+    /// How long a cold launch keeps retrying (on the "Connecting…" splash) before
+    /// giving up and showing the connection error. A freshly booted Apple TV is
+    /// often still joining Wi-Fi for the first few seconds, and the error screen
+    /// flashing up during that window is just noise.
+    private let startupGracePeriod: TimeInterval = 15
+    private var connectGraceDeadline: Date?
+
     /// Bumped by the "reload" command so the home re-fetches its shelves.
     private(set) var reloadToken = 0
 
@@ -114,7 +121,11 @@ final class AppModel {
         // Bonjour (UIDevice.current.name is gated by Apple and just says "Apple
         // TV"). Once resolved it rides every heartbeat — see ManagementClient.
         identity.refreshLocalName()
+        // Only the cold launch gets the grace period — "Retry Now", the blocked-state
+        // auto-retry, and the address-entry screen all want fast feedback.
+        connectGraceDeadline = Date().addingTimeInterval(startupGracePeriod)
         await refreshFromServer(initial: true)
+        connectGraceDeadline = nil
         startLoop()
         startLiveLoop()
     }
@@ -184,6 +195,11 @@ final class AppModel {
             identity.deviceToken = nil
             await performConnect(allowReregister: false)
         } catch {
+            if let deadline = connectGraceDeadline, Date() < deadline {
+                try? await Task.sleep(for: retryInterval)
+                await performConnect(allowReregister: allowReregister)
+                return
+            }
             connectionFailed = true
             phase = .needsManagementServer
         }
