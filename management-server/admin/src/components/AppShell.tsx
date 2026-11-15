@@ -190,7 +190,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <MenuIcon />
             </IconButton>
           )}
-          <Box component="img" src="/favicon.svg" alt="" sx={{ width: 32, height: 32, mr: 1.5, borderRadius: 1 }} />
+          <Box component="img" src="/fleet-icon.svg" alt="" sx={{ width: 32, height: 32, mr: 1.5, borderRadius: 1 }} />
           <Typography variant="h6" noWrap sx={{ fontWeight: 700, flexGrow: 1 }}>
             Jellyfin — Fleet
           </Typography>

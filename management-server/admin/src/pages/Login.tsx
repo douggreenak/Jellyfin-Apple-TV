@@ -79,7 +79,7 @@ export default function Login() {
                 justifyContent: 'center',
               }}
             >
-              <Box component="img" src="/favicon.svg" alt="" sx={{ width: '100%', height: '100%', borderRadius: 'inherit', display: 'block' }} />
+              <Box component="img" src="/fleet-icon.svg" alt="" sx={{ width: '100%', height: '100%', borderRadius: 'inherit', display: 'block' }} />
             </Box>
             <Typography variant="h5" align="center">
               Jellyfin — Fleet
