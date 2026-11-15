@@ -9,7 +9,6 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import LiveTvIcon from '@mui/icons-material/LiveTv';
 import { useAuth } from '../auth';
 import { ApiError } from '../api/client';
 
@@ -80,7 +79,7 @@ export default function Login() {
                 justifyContent: 'center',
               }}
             >
-              <LiveTvIcon fontSize="large" />
+              <Box component="img" src="/favicon.svg" alt="" sx={{ width: '100%', height: '100%', borderRadius: 'inherit', display: 'block' }} />
             </Box>
             <Typography variant="h5" align="center">
               Jellyfin — Fleet

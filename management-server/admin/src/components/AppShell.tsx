@@ -28,7 +28,6 @@ import TuneIcon from '@mui/icons-material/Tune';
 import MenuIcon from '@mui/icons-material/Menu';
 import LogoutIcon from '@mui/icons-material/Logout';
 import LockResetIcon from '@mui/icons-material/LockReset';
-import LiveTvIcon from '@mui/icons-material/LiveTv';
 import DarkModeIcon from '@mui/icons-material/DarkModeOutlined';
 import LightModeIcon from '@mui/icons-material/LightModeOutlined';
 import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
@@ -191,7 +190,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <MenuIcon />
             </IconButton>
           )}
-          <LiveTvIcon sx={{ mr: 1.5 }} />
+          <Box component="img" src="/favicon.svg" alt="" sx={{ width: 32, height: 32, mr: 1.5, borderRadius: 1 }} />
           <Typography variant="h6" noWrap sx={{ fontWeight: 700, flexGrow: 1 }}>
             Jellyfin — Fleet
           </Typography>
