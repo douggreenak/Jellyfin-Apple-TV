@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import AppBar from '@mui/material/AppBar';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import AppsIcon from '@mui/icons-material/Apps';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
 import IconButton from '@mui/material/IconButton';
@@ -193,6 +195,28 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <Typography variant="h6" noWrap sx={{ fontWeight: 700, flexGrow: 1 }}>
             Jellyfin — Fleet
           </Typography>
+          <Tooltip title="Services hub — all apps">
+            <Button
+              color="inherit"
+              variant="outlined"
+              size="small"
+              href={`http://${window.location.hostname}:8090/apps`}
+              startIcon={<AppsIcon />}
+              aria-label="Apps"
+              sx={{
+                mr: 1,
+                textTransform: 'none',
+                fontWeight: 600,
+                borderColor: 'rgba(255,255,255,0.45)',
+                '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.12)' },
+                '& .MuiButton-startIcon': { mr: { xs: 0, sm: 0.75 } },
+                minWidth: { xs: 36, sm: 64 },
+                px: { xs: 0.75, sm: 1.5 },
+              }}
+            >
+              <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Apps</Box>
+            </Button>
+          </Tooltip>
           <Tooltip title="Dashboard theme color">
             <IconButton
               color="inherit"
