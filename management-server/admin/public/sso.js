@@ -1,7 +1,7 @@
 /* Services Hub single sign-on. If you are not signed in here, go through the hub
    (which signs you in and brings you back). While that is being decided a loading wheel covers the page,
    so the service's own login screen never flashes. Config comes from data- attributes:
-   data-service  hub service id         data-check  "token:<localStorage key>" | "session:<api path>"
+   data-service  hub service id         data-check  "token:<localStorage key>" | "session:<api path>" | "path:<page>" (the sign-in page itself)
    data-logout   "<METHOD> <path>"  (optional) -> after it succeeds, also sign out of the hub */
 (function () {
   var el = document.currentScript, id = el.dataset.service;
@@ -42,6 +42,8 @@
     var has = false;
     try { has = !!localStorage.getItem(arg) || location.hash.indexOf('#sso=') === 0; } catch (e) {}
     if (!has) bounce(); else { showCover(); setTimeout(function () { if (!settled) signedIn(); }, 8000); } // token present: wait for the app to confirm it
+  } else if (kind === 'path') {
+    if (location.pathname === arg || location.pathname === arg + '/') bounce(); // we are on the app's own login page: go via the hub instead
   } else if (kind === 'session') {
     showCover();
     fetch(arg, { credentials: 'same-origin' }).then(function (r) { return r.json(); })
