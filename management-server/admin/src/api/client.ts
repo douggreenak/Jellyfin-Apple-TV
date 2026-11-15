@@ -279,6 +279,18 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+// Single sign-on handoff: the Services Hub logs in on the user's behalf and opens
+// this dashboard as /#sso=<jwt>. Take the token, store it, and strip it from the URL.
+try {
+  const m = /^#sso=([^&]+)/.exec(window.location.hash);
+  if (m) {
+    localStorage.setItem(TOKEN_KEY, decodeURIComponent(m[1]));
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+} catch {
+  /* storage unavailable: fall back to the normal login form */
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {

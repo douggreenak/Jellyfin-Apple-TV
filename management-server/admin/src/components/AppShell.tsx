@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import AppBar from '@mui/material/AppBar';
 import Avatar from '@mui/material/Avatar';
@@ -75,7 +75,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const location = useLocation();
-  const navigate = useNavigate();
   const { username, logout } = useAuth();
   const { mode, toggle, accentHex, setAccent } = useColorMode();
   const [accentMenuAnchor, setAccentMenuAnchor] = useState<null | HTMLElement>(null);
@@ -92,7 +91,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const handleLogout = () => {
     setMenuAnchor(null);
     logout();
-    navigate('/login', { replace: true });
+    // Sign out of the Services Hub too, otherwise it would just sign us straight back in.
+    window.location.href = `${(window as unknown as { __HUB_ORIGIN__?: string }).__HUB_ORIGIN__ ?? `http://${window.location.hostname}:8090`}/logout`;
   };
 
   const openChangePassword = () => {
